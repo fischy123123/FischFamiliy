@@ -24,7 +24,7 @@ npx serve .        # then open the printed URL
 |---|---|
 | **Eric** | Dad. Powered by coffee & dad jokes. Broadcasts them on a timer. |
 | **Jessy** | Mom. Can hear a snack wrapper from 3 rooms away. |
-| **Liam** (12) | Master of "five more minutes." Fastest Fisch. |
+| **Liam** (14) | Hoodie, headphones, master of "five more minutes." Fastest Fisch. |
 | **Maddie** (11) | CEO of Sass. Secretly in charge. |
 | **Rowan** (4) | ZOOMIES incarnate. Randomly sprints for no reason. |
 | **Faylen** (2) | Tiny tornado. Waddles. Follows the nearest parent. |

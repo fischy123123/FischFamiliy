@@ -892,6 +892,109 @@ function buildPerson(cfg) {
       tie.position.set(s * R * 0.88, R * 0.5, -R * 0.1);
       headG.add(tie);
     }
+  } else if (cfg.style === 'wavybob') { // Maddie: side-parted waves to the jaw
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.06, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
+    cap.rotation.x = -0.3;
+    cap.castShadow = true;
+    headG.add(cap);
+    const back = sph(R * 0.85, hairM, 14, 10);
+    back.scale.set(1.12, 1.15, 0.8);
+    back.position.set(0, -R * 0.3, -R * 0.45);
+    headG.add(back);
+    for (const s of [-1, 1]) { // wavy locks: stacked offset blobs down to the jaw
+      for (let seg = 0; seg < 3; seg++) {
+        const wave = sph(R * (0.32 - seg * 0.04), hairM, 10, 8);
+        wave.position.set(s * R * (0.85 + Math.sin(seg * 2.1) * 0.12), R * 0.15 - seg * R * 0.42, R * 0.1 - seg * 0.06 * R);
+        headG.add(wave);
+      }
+    }
+    const bangs = sph(R * 0.5, hairM, 12, 10); // side-swept part
+    bangs.scale.set(1.4, 0.45, 0.7);
+    bangs.position.set(R * 0.28, R * 0.68, R * 0.6);
+    bangs.rotation.z = -0.3;
+    headG.add(bangs);
+  } else if (cfg.style === 'curly') { // Liam: long curly mop to the shoulders
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+    cap.rotation.x = -0.35;
+    cap.castShadow = true;
+    headG.add(cap);
+    for (let ring = 0; ring < 3; ring++) { // rings of curls around sides + back
+      const n = 6, y = R * (0.35 - ring * 0.55);
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * Math.PI + Math.PI; // back half + sides only
+        const rad = R * (0.92 + ring * 0.06);
+        const curl = sph(R * rand(0.26, 0.36), hairM, 8, 6);
+        curl.position.set(Math.cos(a) * rad, y, Math.sin(a) * rad * 0.9);
+        headG.add(curl);
+      }
+    }
+    for (const s of [-1, 1]) { // curls framing the face
+      const curl = sph(R * 0.3, hairM, 8, 6);
+      curl.position.set(s * R * 0.88, R * 0.05, R * 0.45);
+      headG.add(curl);
+    }
+  } else if (cfg.style === 'bun') { // Faylen: wispy top bun
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.04, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
+    cap.rotation.x = -0.32;
+    headG.add(cap);
+    const bun = sph(R * 0.4, hairM, 12, 10);
+    bun.scale.set(1, 0.85, 1);
+    bun.position.set(0, R * 1.05, -R * 0.12);
+    headG.add(bun);
+    for (let i = 0; i < 4; i++) { // escaped wisps
+      const wisp = sph(R * 0.09, hairM, 6, 5);
+      wisp.position.set(rand(-0.5, 0.5) * R, R * (0.85 + rand(0, 0.35)), rand(-0.4, 0.2) * R);
+      headG.add(wisp);
+    }
+  }
+  if (cfg.cap) { // sideways ball cap (Rowan style)
+    const capG = new THREE.Group();
+    const capM = pmat(cfg.cap, { roughness: 0.8 });
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(R * 1.1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.48), capM);
+    crown.castShadow = true;
+    capG.add(crown);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.85, R * 0.85, R * 0.07, 14, 1, false, -Math.PI * 0.38, Math.PI * 0.76), capM);
+    brim.scale.set(1.25, 1, 1.5);
+    brim.position.set(0, R * 0.38, R * 0.35);
+    capG.add(brim);
+    const logo = sph(R * 0.22, pmat(0xb03a2e), 10, 8); // round red patch
+    logo.scale.z = 0.25;
+    logo.position.set(0, R * 0.62, R * 0.92);
+    capG.add(logo);
+    capG.rotation.y = 0.55; // worn charmingly sideways
+    capG.position.y = R * 0.12;
+    headG.add(capG);
+  }
+  if (cfg.glasses) { // Liam's frames
+    const frameM = pmat(0x4a3a34, { roughness: 0.35 });
+    for (const s of [-1, 1]) {
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(R * 0.24, R * 0.035, 6, 14), frameM);
+      rim.position.set(s * R * 0.33, R * 0.12, R * 0.97);
+      headG.add(rim);
+      const temple = box(R * 0.05, R * 0.05, R * 1.0, 0x4a3a34, s * R * 0.62, R * 0.16, R * 0.45, headG);
+      temple.material = frameM;
+    }
+    const bridge = box(R * 0.2, R * 0.05, R * 0.05, 0x4a3a34, 0, R * 0.14, R * 0.99, headG);
+    bridge.material = frameM;
+  }
+  if (cfg.fuzz) { // proud teenage mustache fuzz
+    const fuzz = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.032, R * 0.24, 4, 8), pmat(0x8a6a48, { roughness: 0.8 }));
+    fuzz.rotation.z = Math.PI / 2;
+    fuzz.position.set(0, -R * 0.19, R * 0.97);
+    headG.add(fuzz);
+  }
+  if (cfg.blush) { // rosy kid cheeks
+    for (const s of [-1, 1]) {
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(R * 0.16, 10, 8), pmat(0xe09a86, { transparent: true, opacity: 0.4 }));
+      cheek.scale.set(1, 0.65, 0.4);
+      cheek.position.set(s * R * 0.52, -R * 0.14, R * 0.78);
+      headG.add(cheek);
+    }
+  }
+  if (cfg.noseStud) { // Jessy's nose ring
+    const stud = sph(R * 0.04, pmat(0xd4c088, { roughness: 0.2, metalness: 0.9 }), 8, 6);
+    stud.position.set(R * 0.13, -R * 0.1, R * 0.99);
+    headG.add(stud);
   }
   if (cfg.beard) { // trimmed beard hugging the jaw + mustache
     const beard = new THREE.Mesh(
@@ -908,6 +1011,27 @@ function buildPerson(cfg) {
   }
   g.add(headG);
   parts.headG = headG;
+  if (cfg.headphones) { // Beats resting around the neck, teen-style
+    const hpM = pmat(0x17181a, { roughness: 0.35 });
+    const neckY = legH + torsoH + R * 0.05;
+    const band = new THREE.Mesh(new THREE.TorusGeometry(R * 0.52, R * 0.05, 6, 14, Math.PI), hpM);
+    band.rotation.x = Math.PI * 0.42; // arcs behind the neck
+    band.rotation.z = Math.PI;
+    band.position.set(0, neckY, -R * 0.05);
+    g.add(band);
+    for (const s of [-1, 1]) {
+      const cup = sph(R * 0.17, hpM, 10, 8);
+      cup.scale.x = 0.6;
+      cup.position.set(s * R * 0.52, neckY - R * 0.1, R * 0.12);
+      g.add(cup);
+    }
+  }
+  if (cfg.dress) { // toddler sundress
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.105, h * 0.175, h * 0.3, 14), clothM);
+    skirt.castShadow = true;
+    skirt.position.y = legH * 0.92;
+    g.add(skirt);
+  }
   // label
   const label = makeLabel(cfg.name, cfg.labelColor);
   label.position.y = h + 0.45;
@@ -920,19 +1044,19 @@ const CHARS = [
   { id: 'eric',  name: 'Eric',  h: 1.82, skin: 0xc98d63, shirt: 0x23211f, sleeve: 0x23211f, pants: 0x2e3440, hair: 0x1d1712, eyes: 0x4a3520, style: 'short', beard: true, leather: true, labelColor: '#ffd166', speed: 6.6, jump: 7.2,
     tag: 'Dad · Powered by coffee & dad jokes',
     quips: ['Has anyone seen my coffee? It was RIGHT here.', 'I’m not sleeping, I’m checking my eyelids for holes.', 'Who wants to help me rake 40 billion redwood needles?', 'Grill’s hot. Dad mode: ACTIVATED.'] },
-  { id: 'jessy', name: 'Jessy', h: 1.7, skin: 0xe8b48f, shirt: 0xf26f21, sleeve: 0xf26f21, pants: 0x35507a, hair: 0x5a3d28, eyes: 0x7aa05c, style: 'long', lips: 0xc96a7a, labelColor: '#ff9f6b', speed: 6.9, jump: 7.2,
+  { id: 'jessy', name: 'Jessy', h: 1.7, skin: 0xe8b48f, shirt: 0xf26f21, sleeve: 0xf26f21, pants: 0x35507a, hair: 0x5a3d28, eyes: 0x7aa05c, style: 'long', lips: 0xc96a7a, noseStud: true, labelColor: '#ff9f6b', speed: 6.9, jump: 7.2,
     tag: 'Mom · Can hear a snack wrapper from 3 rooms away',
     quips: ['I found a banana slug in someone’s shoe. AGAIN.', 'If it’s quiet for more than 2 minutes, I panic.', 'Yes I counted the kids. Twice. We still have four.', 'Whoever drew on the wall… nice shading, but NO.'] },
-  { id: 'liam',  name: 'Liam',  h: 1.52, skin: 0xd9a173, shirt: 0x2f8f4e, sleeve: 0x2f8f4e, pants: 0x39506b, hair: 0x3c2a1a, eyes: 0x4a3520, style: 'short', headScale: 1.08, labelColor: '#7ee08a', speed: 7.6, jump: 7.6,
-    tag: 'Age 12 · Master of "five more minutes"',
+  { id: 'liam',  name: 'Liam',  h: 1.68, skin: 0xe4b58e, shirt: 0xa9c1cf, sleeve: 0xa9c1cf, pants: 0x33383f, hair: 0x7a5535, eyes: 0x76909e, style: 'curly', glasses: true, fuzz: true, headphones: true, blush: true, labelColor: '#a9d4e8', speed: 7.6, jump: 7.6,
+    tag: 'Age 14 · Hoodie, headphones, "five more minutes"',
     quips: ['Five more minutes. FIVE. That’s basically nothing.', 'I’m not running, I’m speed-walking competitively.', 'Maddie started it.', 'Can we have pizza? Asking for me.'] },
-  { id: 'maddie', name: 'Maddie', h: 1.48, skin: 0xe3ab80, shirt: 0x9b5bb5, sleeve: 0x9b5bb5, pants: 0x3a3a4a, hair: 0x4a301a, eyes: 0x55702f, style: 'ponytail', headScale: 1.08, labelColor: '#d9a3ff', speed: 7.3, jump: 7.4,
+  { id: 'maddie', name: 'Maddie', h: 1.5, skin: 0xeec3a0, shirt: 0xaede6a, sleeve: 0xaede6a, pants: 0x3a3a4a, hair: 0x6b4a2e, eyes: 0x5f4026, style: 'wavybob', blush: true, headScale: 1.06, labelColor: '#c8f08a', speed: 7.3, jump: 7.4,
     tag: 'Age 11 · CEO of Sass, secretly in charge',
     quips: ['Liam started it.', 'I’m not bossy, I just have better ideas.', 'Technically, I’m the favorite. It’s just science.', 'Did someone say SNACKS?'] },
-  { id: 'rowan', name: 'Rowan', h: 1.05, skin: 0xdda278, shirt: 0xd8442e, sleeve: 0xd8442e, pants: 0x4a6b8a, hair: 0x5a3d22, eyes: 0x4a3520, style: 'wild', headScale: 1.22, labelColor: '#ff8a7a', speed: 7.0, jump: 6.8,
+  { id: 'rowan', name: 'Rowan', h: 1.05, skin: 0xf0c8a8, shirt: 0x2b3444, sleeve: 0x2b3444, pants: 0x4a6b8a, hair: 0x5a3d22, eyes: 0x7d94a6, style: 'short', cap: 0x232c3d, blush: true, headScale: 1.22, labelColor: '#ff8a7a', speed: 7.0, jump: 6.8,
     tag: 'Age 4 · ZOOMIES incarnate. Do not feed sugar.',
     quips: ['ZOOOOOOMIES!!!', 'I’m NOT tired!! *falls asleep standing*', 'Watch this!! (nobody watch this)', 'The slug is my best friend now. His name is Greg.'] },
-  { id: 'faylen', name: 'Faylen', h: 0.78, skin: 0xecb894, shirt: 0xf2a5c0, sleeve: 0xf2a5c0, pants: 0xf2a5c0, hair: 0x6b4a2e, eyes: 0x5d7a4a, style: 'pigtails', headScale: 1.34, labelColor: '#ffc0dd', speed: 4.8, jump: 6.0,
+  { id: 'faylen', name: 'Faylen', h: 0.78, skin: 0xdca87e, shirt: 0xbfe3cf, sleeve: 0xbfe3cf, pants: 0xdca87e, shoes: 0xfdfdfd, hair: 0x6b4a2e, eyes: 0x7a93a8, style: 'bun', dress: true, blush: true, headScale: 1.34, labelColor: '#ffc0dd', speed: 4.8, jump: 6.0,
     tag: 'Age 2 · Tiny tornado. Professional crayon eater.',
     quips: ['SNACK?? SNACK!!!', 'Uppy!! UPPY!!', 'Mine. Mine. MINE. mine.', '*mysterious toddler babbling* ...uh oh.'] },
 ];
