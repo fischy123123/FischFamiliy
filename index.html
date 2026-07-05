@@ -11,6 +11,10 @@
   html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; touch-action: none;
     font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #0d1a12; }
   #game { display: block; width: 100%; height: 100%; }
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 4;
+    background: radial-gradient(ellipse at center, transparent 58%, rgba(8, 18, 10, 0.26) 100%);
+  }
 
   /* HUD */
   #hud { display: none; }
@@ -113,6 +117,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="vignette"></div>
 
 <div id="intro">
   <h1>🌲 Fisch Family: Forest Chaos 🌲</h1>
