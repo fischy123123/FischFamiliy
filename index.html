@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Fisch Family: Forest Chaos</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; touch-action: none;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #0d1a12; }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* HUD */
+  #hud { display: none; }
+  #mission {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px; z-index: 10;
+    background: rgba(12, 26, 18, 0.78); color: #fff; border: 2px solid #7ee08a55;
+    border-radius: 14px; padding: 10px 14px; max-width: min(320px, 62vw);
+    backdrop-filter: blur(4px);
+  }
+  #mtitle { font-size: 17px; font-weight: bold; color: #ffd166; }
+  #mdesc { font-size: 12px; opacity: 0.9; margin: 3px 0; line-height: 1.35; }
+  #mprog { font-size: 13px; font-weight: bold; color: #7ee08a; }
+  #score {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(12, 26, 18, 0.78); color: #ffd166; font-weight: bold; font-size: 16px;
+    padding: 6px 14px; border-radius: 20px; border: 2px solid #ffd16655;
+  }
+  #portraits {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; z-index: 10;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #portraits button {
+    width: 44px; height: 44px; border-radius: 50%; border: 2px solid #fff;
+    background: rgba(12, 26, 18, 0.8); font-size: 20px; font-weight: bold; cursor: pointer;
+    transition: transform 0.1s;
+  }
+  #portraits button.active { background: #2f5a3a; transform: scale(1.15); box-shadow: 0 0 12px #7ee08a; }
+  #mute {
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); left: 8px; z-index: 10;
+    width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(12,26,18,0.7);
+    font-size: 18px; cursor: pointer;
+  }
+  #help {
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); left: 56px; z-index: 10;
+    color: #ffffff99; font-size: 11px;
+  }
+  @media (pointer: coarse) { #help { display: none; } }
+
+  /* touch controls */
+  #joy {
+    display: none; position: fixed; width: 120px; height: 120px; z-index: 9;
+    border: 2px solid rgba(255,255,255,0.35); border-radius: 50%;
+    background: rgba(255,255,255,0.06); pointer-events: none;
+  }
+  #joyknob {
+    position: absolute; left: 34px; top: 34px; width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(255,255,255,0.45);
+  }
+  #jumpbtn {
+    display: none; position: fixed; right: 18px; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+    width: 76px; height: 76px; border-radius: 50%; z-index: 10;
+    border: 3px solid rgba(255,255,255,0.5); background: rgba(126, 224, 138, 0.35);
+    color: #fff; font-size: 14px; font-weight: bold;
+  }
+  @media (pointer: coarse) { #jumpbtn { display: block; } }
+
+  /* speech bubbles */
+  #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 8; }
+  .bubble {
+    position: absolute; transform: translate(-50%, -100%);
+    background: #fffef5; color: #222; font-size: 13px; font-weight: 600;
+    padding: 6px 10px; border-radius: 12px; border: 2px solid #22222233;
+    max-width: 210px; text-align: center; box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+  }
+  .bubble::after {
+    content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: #fffef5;
+  }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 110px); left: 50%;
+    transform: translate(-50%, 20px); z-index: 11; opacity: 0; transition: all 0.3s;
+    background: rgba(20, 40, 26, 0.92); color: #fff; font-size: 15px; font-weight: bold;
+    padding: 12px 20px; border-radius: 14px; border: 2px solid #ffd16688;
+    max-width: 86vw; text-align: center; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* intro */
+  #intro {
+    position: fixed; inset: 0; z-index: 20; overflow-y: auto;
+    background: linear-gradient(180deg, #10281a 0%, #1d3a26 60%, #2a4a30 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px 16px; text-align: center; touch-action: pan-y;
+  }
+  #intro h1 { color: #ffd166; font-size: clamp(26px, 6vw, 44px); text-shadow: 0 3px 0 #00000055; }
+  #intro h2 { color: #7ee08a; font-size: clamp(13px, 3.4vw, 18px); margin: 6px 0 4px; font-weight: 600; }
+  #intro p { color: #ffffffbb; font-size: 13px; margin-bottom: 16px; }
+  #cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; width: 100%; max-width: 560px; }
+  .card {
+    background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 14px; padding: 12px 10px; cursor: pointer; transition: transform 0.1s, background 0.2s;
+  }
+  .card:active { transform: scale(0.96); background: rgba(255,255,255,0.18); }
+  .cname { font-size: 19px; font-weight: bold; }
+  .ctag { font-size: 11.5px; color: #ffffffcc; margin-top: 4px; line-height: 1.35; }
+  #intro .hint { margin-top: 16px; color: #ffd166; font-size: 14px; font-weight: bold; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="intro">
+  <h1>🌲 Fisch Family: Forest Chaos 🌲</h1>
+  <h2>Live from the redwoods of Felton, California</h2>
+  <p>One house in the forest. Six Fisches. Zero chance of peace and quiet.</p>
+  <div id="cards"></div>
+  <div class="hint">👆 Tap your Fisch to start!</div>
+</div>
+
+<div id="hud">
+  <div id="mission" class="ui">
+    <div id="mtitle"></div>
+    <div id="mdesc"></div>
+    <div id="mprog"></div>
+  </div>
+  <div id="score" class="ui">⭐ 0</div>
+  <div id="portraits" class="ui"></div>
+  <button id="mute" class="ui">🔊</button>
+  <div id="help">WASD/arrows move · Shift run · Space jump · drag mouse = camera · 1–6 switch · M mute</div>
+  <div id="joy"><div id="joyknob"></div></div>
+  <button id="jumpbtn" class="ui">JUMP</button>
+</div>
+
+<div id="bubbles"></div>
+<div id="toast"></div>
+
+<script src="lib/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
