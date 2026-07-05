@@ -445,13 +445,18 @@ woodSign(16, 18, Math.PI + 0.15, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'], 3.6);
 const foliageMat = mat(0x24401f), foliageMat2 = mat(0x2e5026);
 const trunkMat = new THREE.MeshLambertMaterial({ map: barkTex });
 const swayers = []; // gently wind-blown things: {obj, phase, amp, axis}
+const foliageMat3 = mat(0x1d3519);
 function redwood(x, z, s) {
   const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+  g.rotation.y = rand(0, Math.PI * 2);            // natural variation
+  g.rotation.z = rand(-0.025, 0.025);
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5 * s, 0.9 * s, 16 * s, 7), trunkMat);
   trunk.position.y = 8 * s; trunk.castShadow = true; g.add(trunk);
+  const mats2 = [foliageMat, foliageMat2, foliageMat3];
+  const pick = Math.floor(rand(0, 3));
   for (let i = 0; i < 4; i++) {
-    const r = (4.2 - i * 0.85) * s;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 5.5 * s, 7), i % 2 ? foliageMat : foliageMat2);
+    const r = (4.2 - i * 0.85) * s * rand(0.92, 1.08);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 5.5 * s, 7), mats2[(pick + i) % 3]);
     cone.position.y = (8 + i * 3.4) * s;
     cone.castShadow = true;
     g.add(cone);
@@ -564,6 +569,49 @@ for (let i = 0; i < 12; i++) {
     scene.add(g);
     swayers.push({ obj: g, phase: rand(0, 9), amp: 0.12 });
   }
+})();
+// instanced grass tufts across the yard
+(function grass() {
+  const geo = new THREE.PlaneGeometry(0.16, 0.28);
+  geo.translate(0, 0.14, 0);
+  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 700);
+  const dummy = new THREE.Object3D(), col = new THREE.Color();
+  const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
+  let n = 0;
+  for (let i = 0; i < 2600 && n < 700; i++) {
+    const x = rand(-44, 44), z = rand(-34, 18);
+    if (x > 0 && x < 16 && z > -18.5 && z < 10) continue;      // driveway
+    if (z > 9 && z < 17) continue;                             // road
+    if (!spotIsClear(x, z, 0.2)) continue;
+    dummy.position.set(x, 0, z);
+    dummy.rotation.set(rand(-0.12, 0.12), rand(0, Math.PI), rand(-0.12, 0.12));
+    dummy.scale.setScalar(rand(0.6, 1.5));
+    dummy.updateMatrix();
+    inst.setMatrixAt(n, dummy.matrix);
+    col.setHex(greens[n % greens.length]);
+    inst.setColorAt(n, col);
+    n++;
+  }
+  inst.count = n;
+  scene.add(inst);
+})();
+// porch planters + a warm lantern by the door
+(function porchLife() {
+  for (const px of [-1.7, 1.7]) {
+    const pot = cyl(0.22, 0.16, 0.3, 0xa8653f, px, 0.45, 6.1, houseL, 10);
+    const bush2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), mat(0x3d6030));
+    bush2.castShadow = true;
+    bush2.position.set(px, 0.75, 6.1);
+    houseL.add(bush2);
+    for (let i = 0; i < 5; i++) {
+      const fl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), mat([0xffd166, 0xf2a5c0, 0xfef9f0][i % 3]));
+      fl.position.set(px + rand(-0.2, 0.2), 0.8 + rand(0, 0.2), 6.1 + rand(-0.2, 0.2));
+      houseL.add(fl);
+    }
+  }
+  const lantern = box(0.16, 0.26, 0.12, 0x2b2118, -1.1, 2.5, 4.56, houseL);
+  const glow = box(0.1, 0.16, 0.1, 0xffd28a, -1.1, 2.5, 4.58, houseL);
+  glow.material = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
 })();
 // drifting clouds
 const clouds = [];
@@ -1074,6 +1122,7 @@ const family = CHARS.map((cfg, i) => {
     vy: 0, grounded: true, walkT: 0, moving: false, speedMul: 1, blink: rand(1, 4),
     ai: { state: 'idle', timer: rand(1, 3), target: new THREE.Vector3() },
     carrying: null, tagged: false, home: false,
+    buffT: 0, danceT: 0, riding: 0, fleeTag: 0, raceTarget: null,
   };
 });
 const eric = family[0], jessy = family[1];
@@ -1388,7 +1437,19 @@ function updateSquirrel(dt) {
 
 // ---------- AI for the rest of the family ----------
 function updateAI(ch, dt) {
+  if (ch.riding > 0) return; // being carried piggyback
   if (ch.home) { moveChar(ch, 0, 0, dt, 0); return; }
+  if (ch.raceTarget) { // racing the player!
+    const d = ch.raceTarget.clone().sub(ch.pos); d.y = 0;
+    if (d.length() > 0.5) { d.normalize(); moveChar(ch, d.x, d.z, dt, ch.cfg.speed * 1.02); }
+    else moveChar(ch, 0, 0, dt, 0);
+    return;
+  }
+  if (ch.fleeTag > 0) { // playing tag — run away!
+    ch.fleeTag -= dt;
+    const d = ch.pos.clone().sub(player.pos); d.y = 0;
+    if (d.length() < 10) { d.normalize(); moveChar(ch, d.x, d.z, dt, ch.cfg.speed * 0.95); return; }
+  }
   const ai = ch.ai;
   // Faylen follows the nearest parent (adorably slowly)
   if (ch.cfg.id === 'faylen' && Math.random() < 0.006) {
@@ -1420,6 +1481,409 @@ function updateAI(ch, dt) {
     if (d.length() < 0.6) { ai.state = 'idle'; ai.timer = rand(1.5, 5); moveChar(ch, 0, 0, dt, 0); }
     else { d.normalize(); moveChar(ch, d.x, d.z, dt, ch.cfg.speed * 0.55 * ch.speedMul); }
   } else moveChar(ch, 0, 0, dt, 0);
+}
+
+// ---------- Achievements ----------
+const ACH_LIST = {
+  honk: '🚗 Beep Beep! — honked the Mini',
+  mail: '📬 Mail Call — checked the mailbox',
+  skipper: '💦 Stone Cold Skipper — 4+ skips on the San Lorenzo',
+  bounce: '🤸 Boing Master — 5 bounces in a row',
+  deer: '🦌 Deer Whisperer — spotted the deer',
+  squirrel: '🐿️ Rejected — tried to pet the squirrel',
+  smore: '🍫 S’more Sommelier — perfectly toasted',
+  golden: '🐌✨ Legend of Greg — found the Golden Slug',
+  family: '✋ Full House — high-fived the whole family',
+  goal: '⚽ Top Fisch — scored a goal',
+};
+const ach = { unlocked: {}, bounceStreak: 0, hifived: {} };
+function achCount() { return Object.keys(ach.unlocked).length; }
+function award(id) {
+  if (ach.unlocked[id]) return;
+  ach.unlocked[id] = true;
+  score += 10;
+  tada();
+  toast('🏆 Achievement: ' + ACH_LIST[id] + `  (${achCount()}/${Object.keys(ACH_LIST).length})`, 4);
+  const el = document.getElementById('achv');
+  if (el) el.textContent = '🏆 ' + achCount() + '/' + Object.keys(ACH_LIST).length;
+}
+
+// ---------- Backyard activities ----------
+// in-ground trampoline (very Felton)
+const TRAMP = { x: -21, z: -2, r: 1.7 };
+(function trampoline() {
+  const pad = cyl(TRAMP.r, TRAMP.r, 0.06, 0x1c1c20, TRAMP.x, 0.03, TRAMP.z, null, 20);
+  pad.castShadow = false;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(TRAMP.r, 0.13, 8, 20), pmat(0x3563a8, { roughness: 0.7 }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(TRAMP.x, 0.1, TRAMP.z);
+  scene.add(ring);
+})();
+// campfire ring
+const CAMP = { x: -24, z: -16 };
+const flameMat = new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, fog: false });
+const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.8, 8), flameMat);
+flame.position.set(CAMP.x, 0.55, CAMP.z);
+scene.add(flame);
+const flame2 = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 8), new THREE.MeshBasicMaterial({ color: 0xffe07a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, fog: false }));
+flame2.position.set(CAMP.x, 0.5, CAMP.z);
+scene.add(flame2);
+const fireLight = new THREE.PointLight(0xff8a3c, 0.9, 9);
+fireLight.position.set(CAMP.x, 1, CAMP.z);
+scene.add(fireLight);
+for (let i = 0; i < 8; i++) { // ring of stones
+  const a = (i / 8) * Math.PI * 2;
+  const st = new THREE.Mesh(new THREE.SphereGeometry(rand(0.14, 0.2), 6, 5), mat(0x6e6d64));
+  st.position.set(CAMP.x + Math.cos(a) * 0.55, 0.08, CAMP.z + Math.sin(a) * 0.55);
+  scene.add(st);
+}
+for (const a of [0.4, 2.1]) { // crossed logs
+  const lg = cyl(0.08, 0.1, 0.9, 0x4a3220, CAMP.x, 0.14, CAMP.z, null, 6);
+  lg.rotation.z = Math.PI / 2; lg.rotation.y = a;
+}
+addCircleCollider(CAMP.x, CAMP.z, 0.7);
+// soccer ball + goal
+const GOAL = { x: -24, z1: -7.2, z2: -4.8 };
+for (const gz of [GOAL.z1, GOAL.z2]) cyl(0.06, 0.06, 1.8, 0xf0f0f0, GOAL.x, 0.9, gz, null, 8);
+const bar = cyl(0.06, 0.06, GOAL.z2 - GOAL.z1, 0xf0f0f0, GOAL.x, 1.8, (GOAL.z1 + GOAL.z2) / 2, null, 8);
+bar.rotation.x = Math.PI / 2;
+const ball = { pos: new THREE.Vector3(5, 0.35, -2), vel: new THREE.Vector3(), kickCd: 0 };
+const ballMesh = (function () {
+  const g = new THREE.Group();
+  g.add(sph(0.35, pmat(0xf5f5f0, { roughness: 0.5 }), 16, 12));
+  for (let i = 0; i < 8; i++) {
+    const dot = sph(0.09, pmat(0x1c1c1c), 6, 5);
+    const a = (i / 8) * Math.PI * 2, b = (i % 2 ? 0.5 : -0.5);
+    dot.position.set(Math.cos(a) * 0.31, Math.sin(b) * 0.2, Math.sin(a) * 0.31).normalize();
+    dot.position.multiplyScalar(0.33);
+    dot.scale.setScalar(0.55);
+    g.add(dot);
+  }
+  scene.add(g);
+  return g;
+})();
+function ballReset() { ball.pos.set(5, 0.35, -2); ball.vel.set(0, 0, 0); }
+let onGoalScored = null;
+function updateBall(dt) {
+  ball.kickCd -= dt;
+  // kick when the player runs into it
+  const d = ball.pos.distanceTo(player.pos);
+  if (d < 0.95 && ball.kickCd <= 0) {
+    ball.kickCd = 0.35;
+    const dir = ball.pos.clone().sub(player.pos); dir.y = 0; dir.normalize();
+    const pow = 8 + (player.moving ? 3 : 0);
+    ball.vel.set(dir.x * pow, 3.5, dir.z * pow);
+    tone(160, 0.08, 'square', 0.09);
+  }
+  ball.vel.y -= 20 * dt;
+  ball.pos.addScaledVector(ball.vel, dt);
+  if (ball.pos.y < 0.35) { ball.pos.y = 0.35; ball.vel.y *= -0.45; ball.vel.x *= 0.92; ball.vel.z *= 0.92; }
+  const pre = ball.pos.clone();
+  collide(ball.pos, 0.35);
+  const push = ball.pos.clone().sub(pre);
+  if (push.lengthSq() > 0.00001) { // bounce off whatever we hit
+    const n = push.normalize();
+    const vn = ball.vel.dot(n);
+    if (vn < 0) ball.vel.addScaledVector(n, -1.6 * vn);
+    ball.vel.multiplyScalar(0.7);
+  }
+  ball.vel.x *= (1 - 0.4 * dt); ball.vel.z *= (1 - 0.4 * dt);
+  // GOOOOAL?
+  if (ball.pos.x < GOAL.x + 0.4 && ball.pos.x > GOAL.x - 1 && ball.pos.z > GOAL.z1 && ball.pos.z < GOAL.z2 && ball.pos.y < 1.7) {
+    score += 5;
+    fanfare();
+    throwConfetti(ball.pos);
+    toast('⚽ GOOOOAL!!! The redwoods go wild!', 3);
+    say(player, ['GOLAZO!', 'Top bins!!', 'And the crowd (of trees) goes WILD!'][Math.floor(rand(0, 3))], 2.5);
+    award('goal');
+    if (onGoalScored) onGoalScored();
+    ballReset();
+  }
+  ballMesh.position.copy(ball.pos);
+  ballMesh.rotation.x += ball.vel.z * dt * 2;
+  ballMesh.rotation.z -= ball.vel.x * dt * 2;
+}
+// Greg the Golden Slug (one per playthrough, hiding in the deep forest)
+const goldenSlug = (function () {
+  const g = makeSlug();
+  g.traverse(o => { if (o.isMesh) o.material = new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x8a6a10, roughness: 0.3, metalness: 0.6 }); });
+  g.scale.setScalar(1.4);
+  g.position.copy(clearSpot(40, 65, 0.6));
+  scene.add(g);
+  return g;
+})();
+let goldenFound = false;
+// a deer at the forest edge (it's Felton, of course there's a deer)
+const deer = (function () {
+  const g = new THREE.Group();
+  const bodyM = pmat(0x8a6844, { roughness: 0.85 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.62, 6, 12), bodyM);
+  body.rotation.x = Math.PI / 2;
+  body.position.y = 0.78;
+  body.castShadow = true;
+  g.add(body);
+  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.4, 6, 10), bodyM);
+  neck.rotation.x = -0.5;
+  neck.position.set(0, 1.15, 0.42);
+  g.add(neck);
+  const head = sph(0.15, bodyM, 12, 10);
+  head.scale.set(0.8, 0.85, 1.25);
+  head.position.set(0, 1.42, 0.62);
+  g.add(head);
+  for (const s of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), bodyM);
+    ear.position.set(s * 0.11, 1.58, 0.55);
+    ear.rotation.z = s * -0.5;
+    g.add(ear);
+    for (const lz of [-0.25, 0.32]) {
+      const leg = cyl(0.035, 0.045, 0.75, 0x7a5c3c, s * 0.13, 0.38, lz, g, 6);
+    }
+  }
+  const tail = sph(0.09, pmat(0xf0ead8), 8, 6);
+  tail.position.set(0, 0.9, -0.48);
+  g.add(tail);
+  g.position.set(34, 0, -14);
+  scene.add(g);
+  return { g, target: new THREE.Vector3(34, 0, -14), timer: 2, speed: 2.5 };
+})();
+function updateDeer(dt) {
+  const dp = deer.g.position.distanceTo(player.pos);
+  if (dp < 8) award('deer');
+  if (dp < 6) { // flee gracefully
+    const away = deer.g.position.clone().sub(player.pos); away.y = 0; away.normalize();
+    deer.target.copy(deer.g.position).addScaledVector(away, 18);
+    deer.speed = 8.5;
+  }
+  deer.timer -= dt;
+  if (deer.timer <= 0) {
+    deer.timer = rand(4, 9);
+    deer.speed = 2.5;
+    const a = rand(0, Math.PI * 2), d = rand(30, 60);
+    deer.target.set(Math.sin(a) * d, 0, Math.cos(a) * d - 8);
+  }
+  const dv = deer.target.clone().sub(deer.g.position); dv.y = 0;
+  if (dv.length() > 0.8) {
+    dv.normalize();
+    deer.g.position.addScaledVector(dv, deer.speed * dt);
+    deer.g.rotation.y = Math.atan2(dv.x, dv.z);
+    const dist = Math.hypot(deer.g.position.x, deer.g.position.z);
+    if (dist > 78) { deer.g.position.multiplyScalar(78 / dist); }
+  }
+}
+// stone skipping on the San Lorenzo
+const stones = [];
+function skipStone() {
+  const s = { pos: player.pos.clone().add(new THREE.Vector3(0, 1, 0)), vel: new THREE.Vector3(rand(-0.5, 0.5), 3.2, 9), hops: 0 };
+  s.m = sph(0.09, pmat(0x77766e, { roughness: 0.6 }), 8, 6);
+  s.m.scale.y = 0.5;
+  scene.add(s.m);
+  stones.push(s);
+  tone(500, 0.05, 'sine', 0.05);
+}
+function updateStones(dt) {
+  for (let i = stones.length - 1; i >= 0; i--) {
+    const s = stones[i];
+    s.vel.y -= 14 * dt;
+    s.pos.addScaledVector(s.vel, dt);
+    if (s.pos.y <= 0.06 && s.vel.y < 0) {
+      if (s.pos.z > 20 && s.pos.z < 31) { // on the water: skip!
+        s.hops++;
+        tone(700 + s.hops * 160, 0.07, 'sine', 0.06);
+        s.vel.y = Math.abs(s.vel.y) * 0.55;
+        s.vel.z *= 0.75;
+        if (s.vel.y < 1.3) { // sink
+          toast(`💦 ${s.hops} skip${s.hops === 1 ? '' : 's'}!` + (s.hops >= 4 ? ' LEGENDARY.' : ''), 2.5);
+          if (s.hops >= 4) award('skipper');
+          scene.remove(s.m); stones.splice(i, 1);
+          continue;
+        }
+      } else { // thud on land
+        tone(140, 0.1, 'triangle', 0.06);
+        scene.remove(s.m); stones.splice(i, 1);
+        continue;
+      }
+    }
+    s.m.position.copy(s.pos);
+  }
+}
+
+// ---------- Talking & playing with the family ----------
+const GREET = {
+  eric: ['Hey hey! What’s the word?', 'Family meeting? No? Okay just checking.'],
+  jessy: ['Hi sweetie. Everyone alive? Good.', 'Talk to me — but make it quick, I smell mischief.'],
+  liam: ['Yo.', 'Sup. I have headphones on but I’ll allow it.'],
+  maddie: ['Hi. You have 30 seconds, I’m very busy.', 'Yes? Speak.'],
+  rowan: ['HI HI HI HI HI!!', 'Guess what?! CHICKEN BUTT!'],
+  faylen: ['Hai.', '*offers you one (1) soggy goldfish cracker*'],
+};
+const REPLY = {
+  eric: { any: ['Have you seen my coffee? This is not a drill.', 'I was today years old when I found a slug in my shoe.', 'Who wants to help stack firewood? ...Hello?'], liam: ['Turn that music down!... wait, that’s a banger. Turn it up.'], rowan: ['No, we cannot jump off the roof onto the trampoline.'] },
+  jessy: { any: ['Did everyone put on sunscreen? Even you, Eric.', 'If anyone asks, the last cookie was ALWAYS gone.', 'I love you, but why are you sticky?'], eric: ['Yes, I saw your coffee. It’s where you left it. On the car roof.'], faylen: ['Is that a crayon in your mouth?? FAYLEN.'] },
+  liam: { any: ['Huh? Sorry, headphones.', 'Can I get Robux? It’s for... education.', 'Flynn Creek Circus was literally peak.'], eric: ['Five. More. Minutes. I’m mid-match.'], maddie: ['I did NOT take your charger. (I took the charger.)'] },
+  maddie: { any: ['I’m literally in the middle of something very important.', 'Fine, you can be my assistant. Unpaid.', 'Technically, that was Liam’s fault.'], liam: ['Nice hair. Did a squirrel style it?'], jessy: ['Mom, tell Liam to stop EXISTING so loudly.'] },
+  rowan: { any: ['Wanna see how fast I run?? TOO LATE, already did.', 'My cap gives me POWERS.', 'Greg the slug is my best friend. Don’t tell the other slugs.'], eric: ['Dad watch this! No wait. Watch THIS!'] },
+  faylen: { any: ['*hands you a slightly chewed crayon* ...gift.', 'Uppy??', 'No. No no no. ...Okay yes.'], jessy: ['Mama!! *shows you a rock like it’s treasure*'] },
+};
+function talkTo(target) {
+  const g = GREET[player.cfg.id];
+  say(player, g[Math.floor(rand(0, g.length))], 2.6);
+  const pool = REPLY[target.cfg.id];
+  const lines = (pool[player.cfg.id] && Math.random() < 0.5) ? pool[player.cfg.id] : pool.any;
+  setTimeout(() => say(target, lines[Math.floor(rand(0, lines.length))], 3.2), 1300);
+  score += 1;
+}
+function highFive(target) {
+  if (player.grounded) player.vy = 4.5;
+  if (target.grounded) target.vy = 4.5;
+  tone(950, 0.06, 'square', 0.08); tone(1400, 0.08, 'square', 0.06, 0.05);
+  say(target, '✋ Up top!', 1.8);
+  score += 2;
+  ach.hifived[target.cfg.id] = true;
+  if (Object.keys(ach.hifived).length >= 5) award('family');
+}
+let raceState = null;
+const SPECIALS = {
+  eric: { label: '📢 Dad joke', fn(t) { say(t, '📢 ' + DAD_JOKES[Math.floor(rand(0, DAD_JOKES.length))], 4.5); setTimeout(() => say(player, 'DAAAD. 🙄', 2), 2300); } },
+  jessy: { label: '🍎 Ask for snack', fn(t) { say(t, 'Here. Eat. You look like you’re about to do something reckless.', 3); player.buffT = 20; toast('🍎 SNACK POWER! +30% speed for 20s', 3); blip(); } },
+  liam: { label: '🏁 Race to mailbox', fn(t) { t.raceTarget = new THREE.Vector3(3.5, 0, 7); raceState = { racing: true, t: 0 }; toast('🏁 RACE! First one to the mailbox! GO GO GO!', 3); say(t, 'You’re about to get DUSTED.', 2.5); } },
+  maddie: { label: '💃 Dance party', fn(t) { for (const f of family) if (f.pos.distanceTo(t.pos) < 9) f.danceT = 3; [523, 659, 784, 659, 523, 784].forEach((f2, i) => tone(f2, 0.15, 'triangle', 0.08, i * 0.14)); throwConfetti(t.pos); say(t, 'DANCE BREAK. It’s mandatory.', 2.5); score += 3; } },
+  rowan: { label: '🏃 Play tag', fn(t) { t.fleeTag = 15; say(t, 'CAN’T CATCH ME, I HAD JUICE!', 2.5); toast('🏃 Rowan is IT-proof for 15s. Catch him!', 3); } },
+  faylen: { label: '🎒 Piggyback', fn(t) { t.riding = 25; say(t, 'UPPY!!! 🥹', 2); toast('🎒 Faylen is aboard. Precious cargo mode: slightly slower.', 3); } },
+};
+function updateRace(dt) {
+  if (!raceState || !raceState.racing) return;
+  const liam = family[2];
+  const mail = new THREE.Vector3(3.5, 0, 7);
+  const pd = player.pos.distanceTo(mail), ld = liam.pos.distanceTo(mail);
+  if (pd < 1.9 || ld < 1.9) {
+    raceState.racing = false;
+    liam.raceTarget = null;
+    if (pd < ld) { toast('🏁 YOU WIN! Liam demands a rematch.', 3.5); say(liam, 'Lag. That was lag.', 2.5); score += 10; fanfare(); throwConfetti(player.pos); }
+    else { toast('🏁 Liam wins. He will never let you forget this.', 3.5); say(liam, 'EZ. Clipped it. GG.', 2.5); }
+  }
+}
+function updateTag(dt) {
+  const rowan = family[4];
+  if (rowan.fleeTag > 0 && player.pos.distanceTo(rowan.pos) < 1.3) {
+    rowan.fleeTag = 0;
+    score += 8;
+    fanfare();
+    say(rowan, 'NOOO my juice powers!!', 2.5);
+    toast('🏃 TAG! You caught the gremlin! +8', 3);
+  }
+}
+
+// ---------- Context actions (interact with whatever is near) ----------
+const MAIL_LINES = [
+  '📬 Bill. Bill. Coupon for 43 tacos. Jackpot.',
+  '📬 A catalog for “Redwood Life” — it’s just pictures of trees. 10/10.',
+  '📬 Letter addressed to “Greg the Slug, 110 River Ln.” Concerning.',
+  '📬 Free pizza coupon! Expired in 2019. Keeping it anyway.',
+  '📬 The neighbor’s mail. Again. Off to the RV resort with you.',
+];
+const objectActions = [
+  { key: 'car', label: '🚗 Honk', near: p => Math.hypot(p.x + 17, p.z + 12) < 3.2, fn() { tone(310, 0.25, 'square', 0.12); tone(392, 0.25, 'square', 0.12); tone(310, 0.3, 'square', 0.12, 0.35); tone(392, 0.3, 'square', 0.12, 0.35); toast('🚗 BEEP BEEP! The Mini is pleased.', 2.5); award('honk'); } },
+  { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 3.5, p.z - 8.5) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
+  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x + 8, p.z + 17.6) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
+  { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
+  { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 15.5 && p.z < 20.4, fn() { skipStone(); } },
+  { key: 'squirrel', label: '🐿️ Pet squirrel', near: p => squirrel.g.position.distanceTo(p) < 2, fn() { squirrel.timer = 0; squirrel.target = clearSpot(30, 45, 0.5); toast('🐿️ The squirrel respectfully declines your friendship.', 3); award('squirrel'); } },
+];
+const actionsEl = document.getElementById('actions');
+let currentActions = [], currentKey = '';
+function setActions(key, list) {
+  if (key === currentKey) return;
+  currentKey = key;
+  currentActions = list;
+  actionsEl.innerHTML = '';
+  actionsEl.style.display = list.length ? 'flex' : 'none';
+  const hotkeys = ['E', 'F', 'G'];
+  list.forEach((a, i) => {
+    const b = document.createElement('button');
+    b.className = 'ui';
+    b.innerHTML = a.label + (matchMedia('(pointer: coarse)').matches ? '' : ` <span class="hk">${hotkeys[i]}</span>`);
+    b.addEventListener('click', () => { initAudio(); a.fn(a.target); currentKey = ''; });
+    actionsEl.appendChild(b);
+  });
+}
+window.addEventListener('keydown', e => {
+  const idx = { KeyE: 0, KeyF: 1, KeyG: 2 }[e.code];
+  if (idx !== undefined && currentActions[idx]) { currentActions[idx].fn(currentActions[idx].target); currentKey = ''; }
+});
+function updateInteractions() {
+  // nearest family member first
+  let best = null, bd = 2.4;
+  for (const f of family) {
+    if (f === player || f.home) continue;
+    const d = f.pos.distanceTo(player.pos);
+    if (d < bd) { bd = d; best = f; }
+  }
+  if (best) {
+    const sp = SPECIALS[best.cfg.id];
+    setActions('char:' + best.cfg.id, [
+      { label: '💬 Talk', fn: talkTo, target: best },
+      { label: '✋ High five', fn: highFive, target: best },
+      { label: sp.label, fn: sp.fn, target: best },
+    ]);
+    return;
+  }
+  for (const o of objectActions) {
+    if (o.near(player.pos)) { setActions('obj:' + o.key, [o]); return; }
+  }
+  setActions('none', []);
+}
+function updateActivities(dt, now) {
+  if (player.buffT > 0) player.buffT -= dt;
+  // trampoline auto-bounce
+  if (player.grounded && Math.hypot(player.pos.x - TRAMP.x, player.pos.z - TRAMP.z) < TRAMP.r) {
+    player.vy = 12.5;
+    boing();
+    ach.bounceStreak++;
+    if (ach.bounceStreak >= 5) award('bounce');
+  } else if (player.grounded) ach.bounceStreak = 0;
+  for (const f of family) { // wandering kids bounce too
+    if (f !== player && f.grounded && Math.hypot(f.pos.x - TRAMP.x, f.pos.z - TRAMP.z) < TRAMP.r) f.vy = 8;
+    if (f.danceT > 0) { // dance party!
+      f.danceT -= dt;
+      f.group.rotation.y = f.heading + f.danceT * 9;
+      if (f.grounded) f.vy = 3.5;
+    }
+  }
+  // Faylen piggyback ride
+  const fay = family[5];
+  if (fay.riding > 0) {
+    fay.riding -= dt;
+    fay.pos.set(player.pos.x, player.pos.y + player.cfg.h * 0.78, player.pos.z - Math.cos(player.heading) * 0.1);
+    fay.heading = player.heading;
+    fay.group.rotation.y = player.heading;
+    fay.walkT += dt * 6;
+    fay.parts.lArm.rotation.x = -2.8; fay.parts.rArm.rotation.x = -2.8; // arms up, wheee
+    if (fay.riding <= 0) {
+      fay.pos.y = 0;
+      say(fay, 'Again! AGAIN!', 2.5);
+    }
+  }
+  // golden slug
+  if (!goldenFound && player.pos.distanceTo(goldenSlug.position) < 1.4) {
+    goldenFound = true;
+    scene.remove(goldenSlug);
+    score += 25;
+    award('golden');
+    throwConfetti(player.pos);
+    say(player, 'GREG?! THE Greg?! The legends were true!', 3.5);
+  }
+  goldenSlug.rotation.y += dt * 0.5;
+  // flame flicker
+  const fl = 0.85 + Math.sin(now * 0.02) * 0.1 + Math.sin(now * 0.047) * 0.08;
+  flame.scale.set(fl, fl * (1 + Math.sin(now * 0.031) * 0.15), fl);
+  flame2.scale.copy(flame.scale);
+  fireLight.intensity = 0.7 + Math.sin(now * 0.023) * 0.25;
+  updateBall(dt);
+  updateDeer(dt);
+  updateStones(dt);
+  updateRace(dt);
+  updateTag(dt);
+  updateInteractions();
 }
 
 // ---------- Missions ----------
@@ -1603,6 +2067,21 @@ const MISSIONS = [
     cleanup() { if (player && player.carrying) { scene.remove(player.carrying); player.carrying = null; } },
     doneText: 'Caffeine levels restored. The parents can parent again! ☕🎉',
   },
+  { // --- Forest Cup ---
+    title: '⚽ Forest Cup',
+    init() {
+      this.goals = 0; this.need = 1 + round;
+      ballReset();
+      const self = this;
+      onGoalScored = () => { self.goals++; };
+      toast('⚽ THE FOREST CUP! Kick the ball into the white goal on the west side of the yard!', 4.5);
+    },
+    desc: () => 'Run into the ball to kick it (running kicks are stronger). Aim for the white goal by the trees!',
+    prog() { return `Goals: ${this.goals} / ${this.need}`; },
+    update(dt) { return this.goals >= this.need; },
+    cleanup() { onGoalScored = null; },
+    doneText: 'Forest Cup CHAMPION! The redwoods sway in celebration! ⚽🏆',
+  },
 ];
 
 function startMission(idx) {
@@ -1730,9 +2209,13 @@ function frame(now) {
     const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
     const dx = ix * cos + iz * sin;
     const dz = -ix * sin + iz * cos;
-    moveChar(player, dx, dz, dt, player.cfg.speed * (run ? 1.55 : 1));
+    let spd = player.cfg.speed * (run ? 1.55 : 1);
+    if (player.buffT > 0) spd *= 1.3;            // snack power
+    if (family[5].riding > 0) spd *= 0.9;        // carrying Faylen
+    moveChar(player, dx, dz, dt, spd);
 
     for (const ch of family) if (ch !== player) updateAI(ch, dt);
+    updateActivities(dt, now);
     updateMission(dt);
     randomQuips(dt);
     dadJokes(dt);

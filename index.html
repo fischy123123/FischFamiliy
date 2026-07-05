@@ -32,6 +32,24 @@
     z-index: 10; background: rgba(12, 26, 18, 0.78); color: #ffd166; font-weight: bold; font-size: 16px;
     padding: 6px 14px; border-radius: 20px; border: 2px solid #ffd16655;
   }
+  #achv {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(12, 26, 18, 0.7); color: #ffd166; font-weight: bold; font-size: 12px;
+    padding: 4px 12px; border-radius: 14px; border: 1px solid #ffd16644;
+  }
+  #actions {
+    display: none; position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
+    left: 50%; transform: translateX(-50%); z-index: 12; gap: 8px;
+  }
+  #actions button {
+    background: rgba(12, 26, 18, 0.88); color: #fff; border: 2px solid #7ee08a99;
+    border-radius: 22px; padding: 11px 16px; font-weight: bold; font-size: 14px; cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+  }
+  #actions button:active { transform: scale(0.94); background: rgba(47, 90, 58, 0.95); }
+  #actions .hk {
+    opacity: 0.65; border: 1px solid #ffffff88; border-radius: 4px; padding: 0 5px; font-size: 11px; margin-left: 4px;
+  }
   #portraits {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; z-index: 10;
     display: flex; flex-direction: column; gap: 6px;
@@ -134,9 +152,11 @@
     <div id="mprog"></div>
   </div>
   <div id="score" class="ui">⭐ 0</div>
+  <div id="achv" class="ui">🏆 0/10</div>
+  <div id="actions" class="ui"></div>
   <div id="portraits" class="ui"></div>
   <button id="mute" class="ui">🔊</button>
-  <div id="help">WASD/arrows move · Shift run · Space jump · drag mouse = camera · 1–6 switch · M mute</div>
+  <div id="help">WASD/arrows move · Shift run · Space jump · E/F/G interact · drag mouse = camera · 1–6 switch · M mute</div>
   <div id="joy"><div id="joyknob"></div></div>
   <button id="jumpbtn" class="ui">JUMP</button>
 </div>

@@ -42,7 +42,22 @@ not controlling wanders around living their best chaotic life.
 4. **☕ Coffee Emergency** — play as a kid and deliver coffee to the
    under-caffeinated parents.
 
-Finish all four to complete a round — then it gets harder.
+5. **⚽ Forest Cup** — score goals on the white goal at the forest edge.
+
+Finish all five to complete a round — then it gets harder.
+
+## Hang out
+
+Walk up to any family member for context actions: **Talk** (everyone has
+opinions, some of them about you), **High five**, and a special per person —
+dad jokes on demand (Eric), snack speed-boost (Jessy), race to the mailbox
+(Liam), mandatory dance party (Maddie), tag (Rowan), piggyback rides (Faylen).
+
+The world is full of stuff too: bounce on the in-ground trampoline, kick the
+soccer ball, skip stones on the San Lorenzo, make s'mores at the campfire,
+honk the Mini, check the mail, knock on the front door, chase the squirrel,
+spot the deer, and find **Greg the Golden Slug** hiding deep in the forest.
+There are 10 achievements to unlock.
 
 ## Controls
 
