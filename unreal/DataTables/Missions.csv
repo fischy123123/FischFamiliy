@@ -1,0 +1,6 @@
+MissionID,Title,BaseCount,PerRoundIncrease,PlayerRequirement,Rules,CompletionText
+slug_patrol,Slug Patrol,8,2,any,"Banana slugs spawn scattered across yard and forest; walk within 1.1m to collect; slugs wiggle and drift slowly; +5 pts each","All slugs relocated to the Slug Sanctuary (a bucket)!"
+toy_tornado,Toy Tornado,10,2,any,"Toys (balls, blocks, rubber ducks) scattered in yard; one is The LEGO — collecting it while grounded launches the player (OW!) and awards sympathy points; +5 pts each","Yard secured! Not a single LEGO left behind."
+dinner_time,Dinner Time!,4,0,parent,"All four kids flee from the controlled parent within 8m at 92% speed; tag within 1.5m to catch; caught kids wait at the porch; +10 pts each","All four kids captured — er, seated for dinner! Spaghetti for the win!"
+coffee_emergency,Coffee Emergency,2,0,kid,"Two mugs on the front porch; carry one at a time (right hand socket) to each parent within 1.8m; +15 pts each; parents too under-caffeinated to move","Caffeine levels restored. The parents can parent again!"
+forest_cup,Forest Cup,2,1,any,"Run into the soccer ball to kick (running kicks stronger: 8-11 m/s + 3.5 up); score into the white goal at west yard (2.4m wide); +5 pts and confetti per goal","Forest Cup CHAMPION! The redwoods sway in celebration!"
