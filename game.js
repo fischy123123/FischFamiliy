@@ -225,6 +225,10 @@ function lerpAngle(a, b, t) {
 
 // Contact-shadow blobs (instanced later, for grounding objects like real AO)
 const blobs = []; // {x, z, r}
+// registries for drop-in GLB replacement (see assets/README.md)
+const treeReg = [];   // every redwood
+const rockReg = [];   // every rock/boulder
+const foliageRef = {};
 
 // Colliders
 const colliders = []; // {type:'box',minX,maxX,minZ,maxZ} | {type:'circle',x,z,r}
@@ -361,12 +365,14 @@ for (const bz of [27.9, 38.1]) { // sandy banks
   bank.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xc9b896 });
 }
 for (let i = 0; i < 16; i++) { // river boulders
-  const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.3, 0.9), 7, 5), mat(0x6e6d64));
+  const br = rand(0.3, 0.9);
+  const b = new THREE.Mesh(new THREE.SphereGeometry(br, 7, 5), mat(0x6e6d64));
   b.scale.y = 0.6;
   b.position.set(rand(-70, 70), 0.1, rand(28, 39));
   b.rotation.y = rand(0, 9);
   b.castShadow = true;
   scene.add(b);
+  rockReg.push({ m: b, x: b.position.x, z: b.position.z, r: br });
 }
 // river is off-limits — except across the Felton Covered Bridge (x 20..23)
 addBoxCollider(-95, 18.6, 27.5, 39);
@@ -883,6 +889,7 @@ function redwood(x, z, s) {
   // crown spire
   foliageXforms.push({ x, y: 17 * s, z, s: 0.8 * s, ry: 0, spire: true, c: FOLIAGE_GREENS[1] });
   blobs.push({ x, z, r: 2.4 * s });
+  treeReg.push({ g, x, z, s, ry: g.rotation.y });
   addCircleCollider(x, z, 0.9 * s);
 }
 function buildFoliage() {
@@ -905,6 +912,7 @@ function buildFoliage() {
   inst.castShadow = true;
   inst.receiveShadow = true;
   scene.add(inst);
+  foliageRef.inst = inst;
 }
 // dense redwood forest crowding the neighborhood (like the real property)
 let placed = 0, guard = 0;
@@ -1008,6 +1016,7 @@ for (let i = 0; i < 12; i++) {
   r.castShadow = true; r.receiveShadow = true;
   scene.add(r);
   blobs.push({ x: p.x, z: p.z, r: rr * 1.5 });
+  rockReg.push({ m: r, x: p.x, z: p.z, r: rr });
 }
 (function fallenLog() {
   const log = cyl(0.45, 0.55, 5.5, 0x5f4230, -27, 0.5, -6, null, 9);
@@ -1305,6 +1314,97 @@ function updateAmbience(dt, now) {
     p.m.material.opacity = 0.32 * (1 - k);
   }
 }
+
+// ---------- Drop-in photo-real assets (see assets/README.md) ----------
+// Any file found in /assets upgrades the world on load; missing files = keep the procedural look.
+(function assetUpgrades() {
+  const TL = new THREE.TextureLoader();
+  function tryTex(file, rx, ry2, srgb, apply) {
+    TL.load('assets/' + file, t => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry2);
+      if (srgb) t.encoding = THREE.sRGBEncoding;
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      apply(t);
+      toast('📸 Photo upgrade loaded: ' + file, 2.5);
+    }, undefined, () => {});
+  }
+  tryTex('ground_diff.jpg', 26, 26, true, t => { ground.material.map = t; ground.material.bumpMap = null; ground.material.needsUpdate = true; });
+  tryTex('ground_nor.jpg', 26, 26, false, t => { ground.material.normalMap = t; ground.material.needsUpdate = true; });
+  tryTex('bark_diff.jpg', 2, 5, true, t => { trunkMat.map = t; trunkMat.bumpMap = null; trunkMat.needsUpdate = true; });
+  tryTex('bark_nor.jpg', 2, 5, false, t => { trunkMat.normalMap = t; trunkMat.needsUpdate = true; });
+  // real captured sky -> real lighting on every surface
+  if (THREE.RGBELoader) {
+    new THREE.RGBELoader().load('assets/env.hdr', hdr => {
+      try {
+        hdr.mapping = THREE.EquirectangularReflectionMapping;
+        const pm = new THREE.PMREMGenerator(renderer);
+        scene.environment = pm.fromEquirectangular(hdr).texture;
+        pm.dispose();
+        hdr.dispose();
+        toast('📸 Real sky lighting loaded (env.hdr)', 2.5);
+      } catch (e) {}
+    }, undefined, () => {});
+  }
+  // scanned models replace the procedural redwoods / rocks, instanced for one draw call per mesh
+  function prepMaterial(m2) {
+    const ms = Array.isArray(m2) ? m2[0] : m2;
+    if (ms.map) ms.map.encoding = THREE.sRGBEncoding;
+    if (ms.isMeshStandardMaterial) ms.envMapIntensity = 0.45;
+    return ms;
+  }
+  function instSwap(src, reg, scaleFor, cleanup) {
+    src.updateMatrixWorld(true);
+    const meshes = [];
+    src.traverse(o => { if (o.isMesh) meshes.push(o); });
+    if (!meshes.length) return false;
+    const bbox = new THREE.Box3().setFromObject(src);
+    const size = bbox.getSize(new THREE.Vector3());
+    const ctr = bbox.getCenter(new THREE.Vector3());
+    if (size.y <= 0.0001) return false;
+    cleanup();
+    const dummy = new THREE.Object3D();
+    for (const m2 of meshes) {
+      const geo = m2.geometry.clone();
+      geo.applyMatrix4(m2.matrixWorld);
+      geo.translate(-ctr.x, -bbox.min.y, -ctr.z);
+      const inst = new THREE.InstancedMesh(geo, prepMaterial(m2.material), reg.length);
+      reg.forEach((t, i) => {
+        dummy.position.set(t.x, 0, t.z);
+        dummy.rotation.set(0, t.ry !== undefined ? t.ry : rand(0, Math.PI * 2), 0);
+        dummy.scale.setScalar(scaleFor(t, size));
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+      });
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      scene.add(inst);
+    }
+    return true;
+  }
+  if (THREE.GLTFLoader) {
+    const GL = new THREE.GLTFLoader();
+    GL.load('assets/tree.glb', g => {
+      try {
+        const ok = instSwap(g.scene, treeReg,
+          (t, size) => (17 * t.s) / size.y,        // match each redwood's original height
+          () => {
+            for (const t of treeReg) scene.remove(t.g);
+            if (foliageRef.inst) scene.remove(foliageRef.inst);
+          });
+        if (ok) toast('📸 Real trees loaded (tree.glb)', 3);
+      } catch (e) {}
+    }, undefined, () => {});
+    GL.load('assets/rock.glb', g => {
+      try {
+        const ok = instSwap(g.scene, rockReg,
+          (t, size) => (t.r * 2.2) / Math.max(size.x, size.z, 0.0001),
+          () => { for (const t of rockReg) scene.remove(t.m); });
+        if (ok) toast('📸 Real rocks loaded (rock.glb)', 3);
+      } catch (e) {}
+    }, undefined, () => {});
+  }
+})();
 
 // ---------- Characters ----------
 function makeLabel(text, color) {
