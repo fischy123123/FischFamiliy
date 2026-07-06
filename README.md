@@ -70,6 +70,15 @@ There are 10 achievements to unlock.
 | Switch character | tap portrait | 1–6 |
 | Mute | 🔊 button | M |
 
+## The world
+
+A compressed but geographically faithful Felton: your house on River Ln,
+the Santa Cruz Redwoods RV Resort across the lane, the San Lorenzo River
+behind it with a walkable Felton Covered Bridge (est. 1892), a Henry
+Cowell trailhead on the far bank, the Roaring Camp steam train passing
+through the redwoods beyond, and the Santa Cruz Mountains hazy on every
+horizon.
+
 ## Tech
 
 Plain [Three.js](https://threejs.org) (vendored in `lib/`, no build step, no
