@@ -24,9 +24,9 @@ scene.fog = new THREE.Fog(0xb5c8b2, 60, 240); // valley haze
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
 
 // Lights — dappled forest afternoon
-const hemi = new THREE.HemisphereLight(0xa8c8e8, 0x243620, 0.45);
+const hemi = new THREE.HemisphereLight(0x9fc2e6, 0x27381f, 0.48);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffe2ae, 1.4);
+const sun = new THREE.DirectionalLight(0xffd9a0, 1.5);
 sun.position.set(35, 55, 20);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -193,6 +193,9 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 
+// Contact-shadow blobs (instanced later, for grounding objects like real AO)
+const blobs = []; // {x, z, r}
+
 // Colliders
 const colliders = []; // {type:'box',minX,maxX,minZ,maxZ} | {type:'circle',x,z,r}
 function addBoxCollider(minX, maxX, minZ, maxZ) { colliders.push({ type: 'box', minX, maxX, minZ, maxZ }); }
@@ -251,7 +254,8 @@ function clearSpot(minR, maxR, r) {
   const dome = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }));
   scene.add(dome);
 })();
-const ground = new THREE.Mesh(new THREE.CircleGeometry(120, 48), new THREE.MeshLambertMaterial({ map: groundTex }));
+const ground = new THREE.Mesh(new THREE.CircleGeometry(120, 48),
+  new THREE.MeshStandardMaterial({ map: groundTex, bumpMap: groundTex, bumpScale: 0.07, roughness: 1, metalness: 0 }));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
@@ -287,7 +291,7 @@ for (let i = 0; i < 26; i++) {
   scene.add(p);
 }
 // River Lane along the front
-const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTex });
+const asphaltMat = new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
 const road = box(140, 0.1, 7, 0x3c3c40, 0, 0.03, 13);
 road.material = asphaltMat;
 road.castShadow = false;
@@ -549,10 +553,10 @@ function updateTrain(dt) {
 
 // ---------- The Fisch House (brown/red chalet, twin gables, 2-car garage) ----------
 const WALL = 0x743828, TRIM = 0x3d251b, ROOFC = 0x4e3a2c, DOORC = 0x33221a;
-const sidingMat = new THREE.MeshLambertMaterial({ map: sidingTex });
-const shingleMat = new THREE.MeshLambertMaterial({ map: shingleTex });
-const plankMat = new THREE.MeshLambertMaterial({ map: plankTex });
-const garageMat = new THREE.MeshLambertMaterial({ map: garageTex });
+const sidingMat = new THREE.MeshStandardMaterial({ map: sidingTex, bumpMap: sidingTex, bumpScale: 0.05, roughness: 0.95, metalness: 0 });
+const shingleMat = new THREE.MeshStandardMaterial({ map: shingleTex, bumpMap: shingleTex, bumpScale: 0.06, roughness: 0.95, metalness: 0 });
+const plankMat = new THREE.MeshStandardMaterial({ map: plankTex, bumpMap: plankTex, bumpScale: 0.04, roughness: 0.9, metalness: 0 });
+const garageMat = new THREE.MeshStandardMaterial({ map: garageTex, bumpMap: garageTex, bumpScale: 0.05, roughness: 0.9, metalness: 0 });
 function gableHouse(cx, cz, w, d, wallH, roofH) {
   const g = new THREE.Group();
   g.position.set(cx, 0, cz);
@@ -710,28 +714,64 @@ woodSign(4, 17.4, Math.PI + 0.15, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'], 3.6);
 
 // ---------- Redwood forest ----------
 const foliageMat = mat(0x24401f), foliageMat2 = mat(0x2e5026);
-const trunkMat = new THREE.MeshLambertMaterial({ map: barkTex });
+const trunkMat = new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 0.14, roughness: 1, metalness: 0 });
 const swayers = []; // gently wind-blown things: {obj, phase, amp, axis}
-const foliageMat3 = mat(0x1d3519);
+// redwood foliage as thousands of instanced branch clusters (one draw call, organic canopies)
+const foliageXforms = [];
+const FOLIAGE_GREENS = [0x274a22, 0x2f5628, 0x1f3d1c, 0x39642e, 0x2a4f24];
 function redwood(x, z, s) {
   const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
   g.rotation.y = rand(0, Math.PI * 2);            // natural variation
-  g.rotation.z = rand(-0.025, 0.025);
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5 * s, 0.85 * s, 16 * s, 9), trunkMat);
-  trunk.position.y = 8 * s; trunk.castShadow = true; g.add(trunk);
+  g.rotation.z = rand(-0.02, 0.02);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * s, 0.85 * s, 17 * s, 9), trunkMat);
+  trunk.position.y = 8.5 * s; trunk.castShadow = true; g.add(trunk);
   const flare = new THREE.Mesh(new THREE.CylinderGeometry(0.85 * s, 1.5 * s, 1.6 * s, 9), trunkMat); // buttressed base
   flare.position.y = 0.8 * s; flare.castShadow = true; g.add(flare);
-  const mats2 = [foliageMat, foliageMat2, foliageMat3];
-  const pick = Math.floor(rand(0, 3));
-  for (let i = 0; i < 4; i++) {
-    const r = (4.2 - i * 0.85) * s * rand(0.92, 1.08);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 5.5 * s, 7), mats2[(pick + i) % 3]);
-    cone.position.y = (8 + i * 3.4) * s;
-    cone.castShadow = true;
-    g.add(cone);
-    if (i % 2 === 0) swayers.push({ obj: cone, phase: rand(0, 9), amp: 0.035 });
+  // whorls of drooping branch clusters, dense at the bottom, tight at the crown
+  const levels = 7;
+  for (let l = 0; l < levels; l++) {
+    const t = l / (levels - 1);
+    const y = (7 + t * 9.2) * s;
+    const radius = (3.1 - t * 2.3) * s;
+    const n = l === levels - 1 ? 2 : 4 + Math.floor(rand(0, 3));
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2);
+      const rr = l === levels - 1 ? radius * 0.2 : radius * rand(0.3, 0.95);
+      foliageXforms.push({
+        x: x + Math.cos(a) * rr,
+        y: y + rand(-0.6, 0.6) * s,
+        z: z + Math.sin(a) * rr,
+        s: rand(0.9, 1.5) * s * (1.55 - t * 0.75),
+        ry: rand(0, 9),
+        c: FOLIAGE_GREENS[Math.floor(rand(0, FOLIAGE_GREENS.length))],
+      });
+    }
   }
+  // crown spire
+  foliageXforms.push({ x, y: 17 * s, z, s: 0.8 * s, ry: 0, spire: true, c: FOLIAGE_GREENS[1] });
+  blobs.push({ x, z, r: 2.4 * s });
   addCircleCollider(x, z, 0.9 * s);
+}
+function buildFoliage() {
+  const geo = new THREE.SphereGeometry(1, 7, 5);
+  const inst = new THREE.InstancedMesh(geo,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 }), foliageXforms.length);
+  const dummy = new THREE.Object3D(), col = new THREE.Color();
+  foliageXforms.forEach((f, i) => {
+    dummy.position.set(f.x, f.y, f.z);
+    dummy.rotation.set(rand(-0.15, 0.15), f.ry, rand(-0.15, 0.15));
+    if (f.spire) dummy.scale.set(f.s * 0.55, f.s * 1.5, f.s * 0.55);
+    else dummy.scale.set(f.s * 1.3, f.s * 0.45, f.s * 1.3);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+    col.setHex(f.c);
+    // subtle per-cluster light variation
+    col.offsetHSL(rand(-0.015, 0.015), rand(-0.05, 0.05), rand(-0.03, 0.03));
+    inst.setColorAt(i, col);
+  });
+  inst.castShadow = true;
+  inst.receiveShadow = true;
+  scene.add(inst);
 }
 // ring of big redwoods + scattered ones (kept out of the yard)
 let placed = 0, guard = 0;
@@ -743,12 +783,14 @@ while (placed < 42 && guard++ < 400) {
   redwood(x, z, rand(0.8, 1.6));
   placed++;
 }
+buildFoliage();
 // bushes around the yard
 for (let i = 0; i < 18; i++) {
   const p = clearSpot(8, 30, 1);
   const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.5, 1.1), 7, 6), mat(0x30522a));
   b.position.set(p.x, 0.4, p.z); b.castShadow = true; scene.add(b);
   swayers.push({ obj: b, phase: rand(0, 9), amp: 0.05 });
+  blobs.push({ x: p.x, z: p.z, r: 1.3 });
 }
 // front-yard trees like the photo
 for (const [x, z] of [[-4, -13], [-11, -12]]) {
@@ -756,7 +798,10 @@ for (const [x, z] of [[-4, -13], [-11, -12]]) {
   const c = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 7), mat(0x47632c));
   c.position.set(x, 2.4, z); c.castShadow = true; scene.add(c);
   addCircleCollider(x, z, 0.5);
+  blobs.push({ x, z, r: 2 });
 }
+blobs.push({ x: -17, z: -12, r: 3 });                       // the Mini
+for (const [bx, bz] of [[8.5, 22.5], [16.5, 21.5], [24.5, 22.8]]) blobs.push({ x: bx, z: bz, r: 3.4 }); // RVs
 
 // ---------- Ambience: a living redwood forest ----------
 // ferns clustered near the trees
@@ -804,12 +849,14 @@ for (const [x, z] of [[-4, -13], [-11, -12]]) {
 // rocks + a mossy fallen log
 for (let i = 0; i < 12; i++) {
   const p = clearSpot(10, 55, 0.8);
-  const r = new THREE.Mesh(new THREE.SphereGeometry(rand(0.3, 0.85), 6, 5), mat(0x686760));
+  const rr = rand(0.3, 0.85);
+  const r = new THREE.Mesh(new THREE.SphereGeometry(rr, 6, 5), mat(0x686760));
   r.scale.y = 0.55;
   r.position.set(p.x, 0.1, p.z);
   r.rotation.y = rand(0, 9);
   r.castShadow = true; r.receiveShadow = true;
   scene.add(r);
+  blobs.push({ x: p.x, z: p.z, r: rr * 1.5 });
 }
 (function fallenLog() {
   const log = cyl(0.45, 0.55, 5.5, 0x5f4230, -27, 0.5, -6, null, 9);
@@ -843,11 +890,11 @@ for (let i = 0; i < 12; i++) {
 (function grass() {
   const geo = new THREE.PlaneGeometry(0.16, 0.28);
   geo.translate(0, 0.14, 0);
-  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 700);
+  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 1500);
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
   let n = 0;
-  for (let i = 0; i < 2600 && n < 700; i++) {
+  for (let i = 0; i < 5600 && n < 1500; i++) {
     const x = rand(-44, 44), z = rand(-34, 18);
     if (x > 0 && x < 16 && z > -18.5 && z < 10) continue;      // driveway
     if (z > 9 && z < 17) continue;                             // road
@@ -882,6 +929,90 @@ for (let i = 0; i < 12; i++) {
   const glow = box(0.1, 0.16, 0.1, 0xffd28a, -1.1, 2.5, 4.58, houseL);
   glow.material = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
 })();
+// ---- photoreal atmosphere layer ----
+// soft contact shadows under everything (fakes ambient occlusion, one draw call)
+(function contactShadows() {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+  const c = cv.getContext('2d');
+  const grad = c.createRadialGradient(64, 64, 4, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(0,0,0,0.4)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.18)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = grad; c.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  const geo = new THREE.PlaneGeometry(2, 2);
+  const inst = new THREE.InstancedMesh(geo,
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }), blobs.length);
+  const dummy = new THREE.Object3D();
+  blobs.forEach((b, i) => {
+    dummy.position.set(b.x, 0.025, b.z);
+    dummy.rotation.set(-Math.PI / 2, 0, rand(0, 9));
+    dummy.scale.setScalar(b.r);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+  });
+  inst.renderOrder = 1;
+  scene.add(inst);
+})();
+// pools of ground mist drifting between the trees and over the river
+const mists = [];
+(function mistPools() {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+  const c = cv.getContext('2d');
+  const grad = c.createRadialGradient(64, 64, 6, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(235,242,238,0.55)');
+  grad.addColorStop(0.7, 'rgba(235,242,238,0.22)');
+  grad.addColorStop(1, 'rgba(235,242,238,0)');
+  c.fillStyle = grad; c.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  for (let i = 0; i < 11; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: rand(0.16, 0.3), depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    const overRiver = i < 4;
+    m.position.set(rand(-60, 60), overRiver ? rand(0.6, 1.4) : rand(0.8, 2.2), overRiver ? rand(28, 38) : rand(-70, 20));
+    if (!overRiver && Math.abs(m.position.x) < 26 && m.position.z > -30 && m.position.z < 18) m.position.x += 45; // keep the yard clear
+    m.scale.set(rand(18, 34), rand(10, 18), 1);
+    m.renderOrder = 2;
+    scene.add(m);
+    mists.push({ m, v: rand(0.2, 0.6) });
+  }
+})();
+// visible sun with warm glow
+(function sunGlow() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+  const c = cv.getContext('2d');
+  const grad = c.createRadialGradient(128, 128, 6, 128, 128, 126);
+  grad.addColorStop(0, 'rgba(255,246,224,1)');
+  grad.addColorStop(0.12, 'rgba(255,238,196,0.9)');
+  grad.addColorStop(0.4, 'rgba(255,222,160,0.28)');
+  grad.addColorStop(1, 'rgba(255,222,160,0)');
+  c.fillStyle = grad; c.fillRect(0, 0, 256, 256);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv), transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  }));
+  sp.position.copy(sun.position).normalize().multiplyScalar(225);
+  sp.scale.setScalar(85);
+  scene.add(sp);
+})();
+// split-rail fence along the bridge path (that trailhead look)
+(function splitRail() {
+  const railM = new THREE.MeshLambertMaterial({ map: plankTex });
+  for (const sx of [19.6, 23.4]) {
+    for (let i = 0; i < 4; i++) {
+      const z0 = 17.5 + i * 2.4;
+      const post = box(0.14, 1.1, 0.14, 0x6b4a30, sx, 0.55, z0);
+      post.material = railM;
+      const rail = box(0.09, 0.12, 2.4, 0x6b4a30, sx, 0.85, z0 + 1.2);
+      rail.material = railM;
+      rail.rotation.x = rand(-0.02, 0.02);
+      const rail2 = box(0.09, 0.12, 2.4, 0x6b4a30, sx, 0.45, z0 + 1.2);
+      rail2.material = railM;
+    }
+  }
+})();
+
 // drifting clouds
 const clouds = [];
 for (let i = 0; i < 7; i++) {
@@ -973,6 +1104,11 @@ function updateAmbience(dt, now) {
   const t = now * 0.001;
   waterTex.offset.x += 0.018 * dt; // the San Lorenzo flows
   waterTex.offset.y = Math.sin(t * 0.4) * 0.01;
+  for (const mi of mists) {
+    mi.m.position.x += mi.v * dt;
+    if (mi.m.position.x > 75) mi.m.position.x = -75;
+    mi.m.material.opacity = 0.14 + Math.sin(t * 0.2 + mi.v * 20) * 0.07;
+  }
   for (const s of swayers) s.obj.rotation.z = Math.sin(t * 0.9 + s.phase) * s.amp;
   for (const c of clouds) {
     c.g.position.x += c.v * dt;
