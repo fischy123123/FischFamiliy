@@ -79,6 +79,14 @@ Cowell trailhead on the far bank, the Roaring Camp steam train passing
 through the redwoods beyond, and the Santa Cruz Mountains hazy on every
 horizon.
 
+## Make it photo-real (no coding needed)
+
+The game auto-upgrades itself with any real photo-scanned assets it finds
+in the [`assets/`](assets/README.md) folder — real forest-floor and bark
+textures, a real captured sky for lighting, scanned tree and rock models.
+See **assets/README.md** for the 20-minute shopping list of free files and
+exactly where to drop them.
+
 ## Tech
 
 Plain [Three.js](https://threejs.org) (vendored in `lib/`, no build step, no
