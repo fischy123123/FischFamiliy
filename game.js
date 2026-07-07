@@ -229,6 +229,7 @@ const blobs = []; // {x, z, r}
 const treeReg = [];   // every redwood
 const rockReg = [];   // every rock/boulder
 const foliageRef = {};
+const grassRef = {};
 
 // Colliders
 const colliders = []; // {type:'box',minX,maxX,minZ,maxZ} | {type:'circle',x,z,r}
@@ -1051,6 +1052,7 @@ for (let i = 0; i < 12; i++) {
   const geo = new THREE.PlaneGeometry(0.16, 0.28);
   geo.translate(0, 0.14, 0);
   const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 1500);
+  grassRef.inst = inst;
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
   let n = 0;
@@ -1329,8 +1331,11 @@ function updateAmbience(dt, now) {
       toast('📸 Photo upgrade loaded: ' + file, 2.5);
     }, undefined, () => {});
   }
-  tryTex('ground_diff.jpg', 26, 26, true, t => { ground.material.map = t; ground.material.bumpMap = null; ground.material.needsUpdate = true; });
-  tryTex('ground_nor.jpg', 26, 26, false, t => { ground.material.normalMap = t; ground.material.needsUpdate = true; });
+  tryTex('ground_diff.jpg', 70, 70, true, t => {
+    ground.material.map = t; ground.material.bumpMap = null; ground.material.needsUpdate = true;
+    if (grassRef.inst) grassRef.inst.visible = false; // the photo floor replaces the grass cards
+  });
+  tryTex('ground_nor.jpg', 70, 70, false, t => { ground.material.normalMap = t; ground.material.needsUpdate = true; });
   tryTex('bark_diff.jpg', 2, 5, true, t => { trunkMat.map = t; trunkMat.bumpMap = null; trunkMat.needsUpdate = true; });
   tryTex('bark_nor.jpg', 2, 5, false, t => { trunkMat.normalMap = t; trunkMat.needsUpdate = true; });
   // real captured sky -> real lighting on every surface
