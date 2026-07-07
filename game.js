@@ -1383,26 +1383,29 @@ function updateAmbience(dt, now) {
     return true;
   }
   if (THREE.GLTFLoader) {
-    const GL = new THREE.GLTFLoader();
-    GL.load('assets/tree.glb', g => {
-      try {
-        const ok = instSwap(g.scene, treeReg,
-          (t, size) => (17 * t.s) / size.y,        // match each redwood's original height
-          () => {
-            for (const t of treeReg) scene.remove(t.g);
-            if (foliageRef.inst) scene.remove(foliageRef.inst);
-          });
-        if (ok) toast('📸 Real trees loaded (tree.glb)', 3);
-      } catch (e) {}
-    }, undefined, () => {});
-    GL.load('assets/rock.glb', g => {
-      try {
-        const ok = instSwap(g.scene, rockReg,
-          (t, size) => (t.r * 2.2) / Math.max(size.x, size.z, 0.0001),
-          () => { for (const t of rockReg) scene.remove(t.m); });
-        if (ok) toast('📸 Real rocks loaded (rock.glb)', 3);
-      } catch (e) {}
-    }, undefined, () => {});
+    // accepts either a single .glb OR an unzipped Sketchfab folder (scene.gltf + textures)
+    function tryModel(paths, onScene) {
+      const GL = new THREE.GLTFLoader();
+      (function attempt(i) {
+        if (i >= paths.length) return;
+        GL.load(paths[i], g => { try { onScene(g.scene, paths[i]); } catch (e) {} }, undefined, () => attempt(i + 1));
+      })(0);
+    }
+    tryModel(['assets/tree.glb', 'assets/tree/scene.gltf', 'assets/tree/scene.glb'], (sc, path) => {
+      const ok = instSwap(sc, treeReg,
+        (t, size) => (17 * t.s) / size.y,        // match each redwood's original height
+        () => {
+          for (const t of treeReg) scene.remove(t.g);
+          if (foliageRef.inst) scene.remove(foliageRef.inst);
+        });
+      if (ok) toast('📸 Real trees loaded (' + path.replace('assets/', '') + ')', 3);
+    });
+    tryModel(['assets/rock.glb', 'assets/rock/scene.gltf', 'assets/rock/scene.glb'], (sc, path) => {
+      const ok = instSwap(sc, rockReg,
+        (t, size) => (t.r * 2.2) / Math.max(size.x, size.z, 0.0001),
+        () => { for (const t of rockReg) scene.remove(t.m); });
+      if (ok) toast('📸 Real rocks loaded (' + path.replace('assets/', '') + ')', 3);
+    });
   }
 })();
 

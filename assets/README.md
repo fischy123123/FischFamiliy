@@ -36,17 +36,26 @@ nothing can break.
 - Same site, search **"pine bark"** or **"bark brown"**
 - 2K JPG → Diffuse → `bark_diff.jpg`, Normal (GL) → `bark_nor.jpg`
 
-### 4. `tree.glb` — a real scanned/modeled redwood *(optional, dramatic)*
+### 4. Tree model — a real scanned/modeled redwood *(optional, dramatic)*
 - **sketchfab.com** → search **"redwood tree"** or **"pine tree
-  low poly realistic"** → filters: **Downloadable** ✓, License **CC0**
+  realistic"** → filters: **Downloadable** ✓, License **CC0**
   (or CC-BY — then add the artist's name to the credits list below)
-- Download format **glTF (.glb)** — pick one under ~15 MB, a single tree
-- Rename to `tree.glb`. The game auto-sizes it and plants all 68 redwoods
-  with it (one draw call — phones are fine).
+- Download **glTF** — pick a single tree under ~15 MB
+- **It downloads as a .zip — that's normal. Unzip it first.** Then look
+  at what's inside:
+  - **A single `.glb` file?** Rename it `tree.glb` and upload it straight
+    into this `assets` folder.
+  - **`scene.gltf` + `scene.bin` + a `textures` folder?** Rename the
+    unzipped folder itself to `tree`, then drag the whole `tree` folder
+    into the upload page (Chrome/Edge upload folders fine). It should land
+    as `assets/tree/scene.gltf`, `assets/tree/textures/…`, etc.
+- Either way the game finds it, auto-sizes it, and plants all 68 redwoods
+  with it (instanced — phones are fine).
 
-### 5. `rock.glb` — a real scanned boulder *(optional)*
+### 5. Rock model — a real scanned boulder *(optional)*
 - Poly Haven models (**polyhaven.com/models**, search "rock") or Sketchfab
-  as above → GLB under ~5 MB → rename `rock.glb`
+  as above — same zip rules: a lone `.glb` becomes `rock.glb`; a
+  `scene.gltf` folder gets renamed to `rock` and uploaded as a folder.
 - Replaces every yard rock and river boulder.
 
 ## Credits
