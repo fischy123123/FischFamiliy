@@ -66,6 +66,14 @@ not controlling wanders around living their best chaotic life.
 
 Finish all five to complete a round — then it gets harder.
 
+## 🗺️ Act II — Greater Felton
+
+- **Downtown Felton** west along the lane: a little main street (Felton Coffee, Felton Market, the Trading Post) with a boardwalk and street lamps that glow at night.
+- **Fishing** — a dock on the San Lorenzo; cast, wait for the bite, reel in trout, bass, the odd boot, or a bragging-rights steelhead.
+- **Canopy zipline** — climb a redwood platform and fly across the yard.
+- **Weather** — tap 🌦️ to roll in the marine-layer fog or bring rain over the redwoods.
+- **Family time-trials** — run the glowing-ring course; each Fisch keeps their own best time on a shared leaderboard (saved on your device).
+
 ## Hang out
 
 Walk up to any family member for context actions: **Talk** (everyone has

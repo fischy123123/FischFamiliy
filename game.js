@@ -60,9 +60,9 @@ const sun = new THREE.DirectionalLight(0xffd9a0, 1.5);
 sun.position.set(35, 55, 20);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -70; sun.shadow.camera.right = 70;
-sun.shadow.camera.top = 70; sun.shadow.camera.bottom = -70;
-sun.shadow.camera.far = 160;
+sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
+sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
+sun.shadow.camera.far = 280;
 sun.shadow.bias = -0.0005;
 scene.add(sun);
 
@@ -2249,6 +2249,12 @@ const ACH_LIST = {
   fremont: '🌲 Inside the Giant — stepped into the Fremont Tree',
   train: '🚂 All Aboard — rode the Roaring Camp railroad',
   photo: '📷 Say Cheese — took a photo',
+  fish: '🎣 Gone Fischin’ — caught something in the San Lorenzo',
+  lunker: '🐟 Lunker! — landed a steelhead',
+  downtown: '🏪 Town Trip — visited downtown Felton',
+  zipline: '🚡 Canopy Flyer — rode the redwood zipline',
+  timetrial: '🏁 Trailblazer — finished a time trial',
+  weather: '🌫️ Marine Layer — saw the fog roll in',
 };
 const ach = { unlocked: {}, bounceStreak: 0, hifived: {} };
 function achCount() { return Object.keys(ach.unlocked).length; }
@@ -2581,6 +2587,21 @@ function updateInteractions() {
     if (Math.hypot(player.pos.x - trainPlatform.pos.x, player.pos.z - trainPlatform.pos.z) < 3.5) {
       setActions('train', [{ label: '🚂 Ride the train', fn: boardTrain }]);
       return;
+    }
+  }
+  // Act II states + spots
+  if (ACT2.zip.riding) { setActions('ziphold', []); return; }
+  if (ACT2.zip.atTop) { setActions('ziptop', [{ label: '🚀 Zip!', fn: rideZip }, { label: '🪜 Climb down', fn: climbDown }]); return; }
+  if (ACT2.fishing.active) { setActions('fishhold', []); return; } // fishing bar handles it
+  if (player) {
+    if (Math.hypot(player.pos.x - ACT2.dock.x, player.pos.z - (ACT2.dock.z + 2.5)) < 3) {
+      setActions('dock', [{ label: '🎣 Fish', fn: startFishing }]); return;
+    }
+    if (player.pos.y < 3 && Math.hypot(player.pos.x - ACT2.zip.base.x, player.pos.z - ACT2.zip.base.z) < 2.5) {
+      setActions('zipbase', [{ label: '🚡 Climb up', fn: climbZip }]); return;
+    }
+    if (!ACT2.trial.active && Math.hypot(player.pos.x - 3, player.pos.z - 6) < 2.6) {
+      setActions('trial', [{ label: '🏁 Time trial', fn: startTrial }]); return;
     }
   }
   // nearest family member first
@@ -3120,7 +3141,7 @@ function updateDayNight(dt, now) {
   const horizon = Math.max(0, 1 - Math.abs(sunH) * 3); // orange near sunrise/sunset
   sun.color.setRGB(1, 0.85 - horizon * 0.25 + dF * 0.05, 0.62 + dF * 0.28 - horizon * 0.2);
   sun.intensity = 0.05 + dF * 1.55;
-  hemi.intensity = 0.06 + dF * 0.5;
+  hemi.intensity = 0.16 + dF * 0.62;             // higher fill so shaded faces aren't black
   hemi.color.setRGB(0.1 + dF * 0.52, 0.16 + dF * 0.6, 0.28 + dF * 0.62);
   hemi.groundColor.setRGB(0.05 + dF * 0.1, 0.08 + dF * 0.14, 0.05 + dF * 0.08);
   // sky dome + fog
@@ -3144,6 +3165,7 @@ function updateDayNight(dt, now) {
   if (firefliesRef) firefliesRef.material.opacity = nF * (0.5 + Math.sin(now * 0.004) * 0.5);
   if (porchLight) porchLight.intensity = nF * 1.5;
   for (const b of nightBulbMats) {
+    if (b.lightRef) { b.lightRef.intensity = nF * 1.3; continue; } // street/porch point lights
     if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF); }
     else { const tw = 0.6 + Math.sin(now * 0.006 + (b.twinkle || 0)) * 0.4; b.m.emissive.setHex(b.base); b.m.emissive.multiplyScalar(0.3 + nF * tw); }
   }
@@ -3416,6 +3438,326 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyP') togglePhoto();
 });
 
+// ============================================================
+//  ACT II — Greater Felton: downtown, fishing, zipline,
+//  weather, and family time-trials
+// ============================================================
+const ACT2 = {
+  fishing: { active: false, phase: 'idle', t: 0, window: 0, caught: 0 },
+  zip: { riding: false, t: 0, start: null, end: null },
+  trial: { active: false, t: 0, cp: 0, rings: [], best: {} },
+  weather: 0, // 0 clear · 1 marine-layer fog · 2 rain
+  dock: { x: 5, z: 26.6 },
+};
+try { ACT2.trial.best = JSON.parse(localStorage.getItem('fisch_trial_best') || '{}'); } catch (e) { ACT2.trial.best = {}; }
+
+// ---- Downtown Felton, west along the lane (Highway 9 vibe) ----
+(function downtown() {
+  const shopMat = new THREE.MeshLambertMaterial({ map: sidingTex });
+  const boardMat = new THREE.MeshLambertMaterial({ map: plankTex });
+  // wooden boardwalk fronting the shops
+  const walk = box(30, 0.12, 3, 0x6b4a30, -64, 0.09, 15.5);
+  walk.material = boardMat;
+  function shop(cx, w, h, color, name, awning) {
+    const g = new THREE.Group(); g.position.set(cx, 0, 19); scene.add(g);
+    const body = box(w, h, 7, color, 0, h / 2, 0, g); body.material = shopMat; body.material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
+    // false-front parapet (old-timey main street)
+    box(w + 0.4, 1.1, 0.4, color, 0, h + 0.4, 3.3, g).material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
+    // awning
+    const aw = box(w - 0.4, 0.12, 1.6, awning, 0, h - 0.9, 4.2, g);
+    aw.rotation.x = 0.32;
+    // windows
+    for (const wx of [-w / 4, w / 4]) { const win = box(w * 0.3, 1.3, 0.1, 0x2c4653, wx, 1.5, 3.56, g); win.material = mat(0x2c4653, { emissive: 0x0a1216 }); nightBulbMats.push({ m: win.material, base: 0xffd98a, window: true }); }
+    box(1.1, 2.1, 0.12, 0x3a2818, 0, 1.05, 3.56, g); // door
+    // hanging sign
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+    const c = cv.getContext('2d'); c.fillStyle = '#2a1c10'; c.fillRect(0, 0, 256, 64);
+    c.strokeStyle = '#e8cf94'; c.lineWidth = 3; c.strokeRect(4, 4, 248, 56);
+    c.fillStyle = '#f2dca0'; c.font = 'bold 30px Georgia'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(name, 128, 34);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+    sign.position.set(0, h - 0.3, 3.62, g); sign.position.z = 3.62; g.add(sign);
+    addBoxCollider(cx - w / 2, cx + w / 2, 15.7, 22.6);
+    blobs.push({ x: cx, z: 19, r: w * 0.6 });
+  }
+  shop(-74, 8, 4, 0xc27a4e, 'FELTON COFFEE', 0xa84636);
+  shop(-64, 9, 4.6, 0xa9b199, 'FELTON MARKET', 0x3f7a62);
+  shop(-54, 8, 4.2, 0xcbb476, 'THE TRADING POST', 0x4d63a0);
+  // street lamps that glow at night
+  for (const lx of [-79, -69, -59, -49]) {
+    cyl(0.09, 0.12, 4, 0x2b2b2f, lx, 2, 14.2, null, 8);
+    const lampM = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0x3a2e12 });
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), lampM);
+    lamp.position.set(lx, 4.1, 14.2); scene.add(lamp);
+    nightBulbMats.push({ m: lampM, base: 0xffcf7a });
+    const lp = new THREE.PointLight(0xffce85, 0, 9, 1.6); lp.position.set(lx, 4, 14.2); scene.add(lp);
+    nightBulbMats.push({ lightRef: lp });
+  }
+  ACT2.downtownCenter = { x: -64, z: 19 };
+})();
+
+// ---- Fishing dock on the San Lorenzo ----
+(function fishingDock() {
+  const boardMat = new THREE.MeshLambertMaterial({ map: plankTex });
+  const d = box(2.4, 0.16, 5, 0x6b4a30, ACT2.dock.x, 0.14, ACT2.dock.z + 1.6, null); d.material = boardMat;
+  for (const dz of [ACT2.dock.z, ACT2.dock.z + 3.2]) { cyl(0.1, 0.1, 0.9, 0x4a3420, ACT2.dock.x - 1, 0.2, dz, null, 6); cyl(0.1, 0.1, 0.9, 0x4a3420, ACT2.dock.x + 1, 0.2, dz, null, 6); }
+  // bobber (hidden until fishing)
+  const bob = new THREE.Group();
+  const ball = sph(0.16, mat(0xd83a3a), 10, 8); ball.position.y = 0.1; bob.add(ball);
+  const btm = sph(0.16, mat(0xf2f2f2), 10, 8); btm.position.y = -0.06; btm.scale.y = 0.6; bob.add(btm);
+  bob.position.set(ACT2.dock.x, 0.1, ACT2.dock.z + 5.5); bob.visible = false; scene.add(bob);
+  ACT2.fishing.bobber = bob;
+})();
+
+// ---- Redwood-canopy zipline ----
+(function ziplineBuild() {
+  const S = new THREE.Vector3(-27, 13, -18), E = new THREE.Vector3(-6, 2.2, -2);
+  ACT2.zip.start = S; ACT2.zip.end = E;
+  // start tower: a platform lashed high on a trunk, with a ladder
+  const post = cyl(0.3, 0.4, 14, 0x5a3f28, S.x, 7, S.z, null, 8);
+  const plat = box(3, 0.2, 3, 0x6b4a30, S.x, S.y - 0.2, S.z); plat.material = new THREE.MeshLambertMaterial({ map: plankTex });
+  for (const [ox, oz] of [[-1.4, -1.4], [1.4, -1.4], [1.4, 1.4], [-1.4, 1.4]]) cyl(0.06, 0.06, 1, 0x3a2818, S.x + ox, S.y + 0.5, S.z + oz, null, 5);
+  addCircleCollider(S.x, S.z, 0.6);
+  // landing pole
+  cyl(0.15, 0.2, 2.4, 0x5a3f28, E.x, 1.2, E.z, null, 8);
+  // the cable
+  const cableGeo = new THREE.BufferGeometry().setFromPoints([S.clone().add(new THREE.Vector3(0, 0.3, 0)), E.clone().add(new THREE.Vector3(0, 1.6, 0))]);
+  scene.add(new THREE.Line(cableGeo, new THREE.LineBasicMaterial({ color: 0x2a2a2a })));
+  // pulley handle the rider hangs from
+  const handle = new THREE.Group();
+  const bar = cyl(0.05, 0.05, 0.5, 0x777, 0, 0, 0, handle, 6); bar.rotation.z = Math.PI / 2;
+  handle.visible = false; scene.add(handle);
+  ACT2.zip.handle = handle;
+  ACT2.zip.base = { x: S.x, z: S.z };
+})();
+
+// ---- Time-trial checkpoint rings (hidden until a run starts) ----
+(function trialBuild() {
+  const path = [[3, 6], [-6, 2], [-14, -6], [-8, -20], [6, -22], [12, -8], [4, 6]];
+  for (let i = 0; i < path.length; i++) {
+    const [x, z] = path[i];
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.16, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x3a2e00, transparent: true, opacity: 0.85 }));
+    ring.position.set(x, 1.7, z); ring.rotation.y = Math.PI / 2; ring.visible = false;
+    scene.add(ring);
+    ACT2.trial.rings.push({ m: ring, x, z, last: i === path.length - 1 });
+  }
+})();
+
+// ---- Rain system ----
+(function rainBuild() {
+  const N = 900;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = rand(-40, 40); pos[i * 3 + 1] = rand(0, 40); pos[i * 3 + 2] = rand(-40, 40); }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const rain = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9fb4c4, size: 0.14, transparent: true, opacity: 0, depthWrite: false }));
+  rain.visible = false; scene.add(rain);
+  ACT2.rain = rain;
+})();
+
+// ---- Fishing ----
+function startFishing() {
+  if (ACT2.fishing.active) return;
+  ACT2.fishing.active = true; ACT2.fishing.phase = 'idle';
+  document.getElementById('fishbar').style.display = 'flex';
+  fishStatus('🎣 Tap CAST to drop your line');
+}
+function fishStatus(t) { const e = document.getElementById('fishstatus'); if (e) e.textContent = t; }
+function castLine() {
+  const f = ACT2.fishing;
+  if (f.phase === 'waiting' || f.phase === 'bite') return;
+  f.phase = 'waiting'; f.t = rand(1.6, 4.5);
+  f.bobber.visible = true; f.bobber.position.set(ACT2.dock.x, 0.1, ACT2.dock.z + 5.5);
+  fishStatus('🎣 Waiting for a bite…');
+  tone(300, 0.12, 'sine', 0.05);
+}
+function reelIn() {
+  const f = ACT2.fishing;
+  if (f.phase === 'bite') {
+    f.phase = 'idle';
+    const roll = Math.random();
+    let msg, pts;
+    if (roll < 0.12) { msg = '🥾 …an old boot. Classic.'; pts = 1; }
+    else if (roll < 0.2) { msg = '🐌 A banana slug. In the RIVER? Greg, explain.'; pts = 2; }
+    else if (roll < 0.55) { msg = '🐟 A rainbow trout!'; pts = 5; }
+    else if (roll < 0.85) { msg = '🐠 A feisty smallmouth bass!'; pts = 6; }
+    else { msg = '🐟✨ A STEELHEAD! The one Dad brags about!'; pts = 12; award('lunker'); }
+    f.caught++; score += pts;
+    fanfare(); f.bobber.visible = false;
+    toast(msg + '  (+' + pts + ')  ·  caught today: ' + f.caught, 3.5);
+    award('fish');
+    fishStatus('🎣 Nice! Tap CAST to go again');
+  } else if (f.phase === 'waiting') {
+    f.phase = 'idle'; f.bobber.visible = false;
+    fishStatus('🎣 Reeled in early — nothing. Tap CAST');
+    tone(180, 0.15, 'triangle', 0.05);
+  }
+}
+function endFishing() {
+  ACT2.fishing.active = false; ACT2.fishing.phase = 'idle';
+  ACT2.fishing.bobber.visible = false;
+  document.getElementById('fishbar').style.display = 'none';
+}
+function updateFishing(dt, now) {
+  const f = ACT2.fishing;
+  if (!f.active) return;
+  if (f.bobber.visible) f.bobber.position.y = 0.1 + Math.sin(now * 0.004) * 0.04;
+  if (f.phase === 'waiting') {
+    f.t -= dt;
+    if (f.t <= 0) { f.phase = 'bite'; f.window = 1.4; fishStatus('‼️ BITE!! Tap REEL!'); tone(880, 0.08, 'square', 0.09); tone(1180, 0.1, 'square', 0.07, 0.08); }
+  } else if (f.phase === 'bite') {
+    f.window -= dt;
+    f.bobber.position.y = 0.1 - Math.abs(Math.sin(now * 0.03)) * 0.25; // dipping
+    if (f.window <= 0) { f.phase = 'idle'; f.bobber.visible = false; fishStatus('🎣 It got away! Tap CAST'); tone(160, 0.2, 'triangle', 0.05); }
+  }
+}
+
+// ---- Zipline ----
+function climbZip() {
+  if (!player || ACT2.zip.riding) return;
+  ACT2.zip.atTop = true;
+  player.pos.copy(ACT2.zip.start);
+  toast('🚡 You’re up in the canopy! Tap 🚀 Zip! to fly', 3.5);
+}
+function climbDown() {
+  ACT2.zip.atTop = false;
+  player.pos.set(ACT2.zip.base.x + 1.5, 0, ACT2.zip.base.z + 1.5);
+}
+function rideZip() {
+  if (!player) return;
+  ACT2.zip.atTop = false;
+  ACT2.zip.riding = true; ACT2.zip.t = 0;
+  ACT2.zip.handle.visible = true;
+  tone(300, 0.5, 'sawtooth', 0.04);
+  award('zipline');
+}
+function updateZip(dt) {
+  const z = ACT2.zip;
+  z.t += dt / 2.6; // ~2.6s ride
+  const k = Math.min(1, z.t);
+  const p = z.start.clone().lerp(z.end, k);
+  p.y += Math.sin(k * Math.PI) * -0.6 + 1.6 * (1 - k); // slight sag, hang below cable
+  player.pos.set(p.x, p.y - 1.4, p.z);
+  player.heading = Math.atan2(z.end.x - z.start.x, z.end.z - z.start.z);
+  z.handle.position.set(p.x, p.y, p.z);
+  if (Math.random() < 0.3) tone(rand(200, 320), 0.05, 'sawtooth', 0.02); // zip whir
+  if (k >= 1) { z.riding = false; z.handle.visible = false; player.pos.copy(z.end); player.pos.y = 0; toast('🚡 Stuck the landing! 🌲', 2.5); }
+}
+
+// ---- Time-trials with a per-character family leaderboard ----
+function startTrial() {
+  const tr = ACT2.trial;
+  if (tr.active) return;
+  tr.active = true; tr.t = 0; tr.cp = 0;
+  tr.rings.forEach((r, i) => { r.m.visible = true; r.m.material.color.setHex(i === 0 ? 0x7ee08a : 0xffd166); });
+  toast('🏁 GO! Run through the glowing rings in order!', 3);
+}
+function endTrial(finished) {
+  const tr = ACT2.trial;
+  tr.active = false;
+  tr.rings.forEach(r => r.m.visible = false);
+  if (finished) {
+    const id = player.cfg.id, prev = tr.best[id];
+    const secs = tr.t;
+    const isBest = !prev || secs < prev;
+    if (isBest) { tr.best[id] = secs; try { localStorage.setItem('fisch_trial_best', JSON.stringify(tr.best)); } catch (e) {} }
+    fanfare(); throwConfetti(player.pos); award('timetrial'); score += 15;
+    const board = family.map(f => ({ n: f.cfg.name, t: tr.best[f.cfg.id] }))
+      .filter(x => x.t != null).sort((a, b) => a.t - b.t)
+      .map((x, i) => `${['🥇', '🥈', '🥉', '4.', '5.', '6.'][i]} ${x.n} ${x.t.toFixed(1)}s`).join('   ');
+    toast(`🏁 ${player.cfg.name}: ${secs.toFixed(1)}s${isBest ? ' — NEW BEST! 🎉' : ''}\n${board}`, 6);
+  }
+}
+function updateTrial(dt, now) {
+  const tr = ACT2.trial;
+  if (!tr.active) return;
+  tr.t += dt;
+  for (const r of tr.rings) r.m.rotation.z += dt * 1.5;
+  const next = tr.rings[tr.cp];
+  if (next && Math.hypot(player.pos.x - next.x, player.pos.z - next.z) < 2.1 && Math.abs(player.pos.y - 1.7) < 3) {
+    tone(700 + tr.cp * 80, 0.1, 'square', 0.07);
+    next.m.visible = false;
+    tr.cp++;
+    if (tr.cp >= tr.rings.length) { endTrial(true); return; }
+    tr.rings[tr.cp].m.material.color.setHex(0x7ee08a);
+    setHUD('🏁 Time Trial', 'Ring ' + tr.cp + ' / ' + tr.rings.length + '  ·  keep going!', '⏱️ ' + tr.t.toFixed(1) + 's');
+  }
+  if (tr.active && Math.floor(now / 250) % 2 === 0) document.getElementById('mprog').textContent = '⏱️ ' + tr.t.toFixed(1) + 's';
+}
+
+// ---- Weather ----
+function cycleWeather() {
+  ACT2.weather = (ACT2.weather + 1) % 3;
+  const names = ['☀️ Clear skies', '🌫️ Marine layer rolling in…', '🌧️ Rain over the redwoods'];
+  toast(names[ACT2.weather], 3);
+  if (ACT2.weather >= 1) award('weather');
+  if (ACT2.rain) ACT2.rain.visible = ACT2.weather === 2;
+}
+function updateWeather(dt, now) {
+  const w = ACT2.weather;
+  // fog distance by weather (day/night already set fog colour this frame)
+  const targetNear = w === 1 ? 14 : (w === 2 ? 30 : 60);
+  const targetFar = w === 1 ? 62 : (w === 2 ? 150 : 240);
+  scene.fog.near += (targetNear - scene.fog.near) * Math.min(1, dt * 1.5);
+  scene.fog.far += (targetFar - scene.fog.far) * Math.min(1, dt * 1.5);
+  if (w === 1) { scene.fog.color.lerp(new THREE.Color(0xd0d6d2), 0.5); scene.background.lerp(new THREE.Color(0xd0d6d2), 0.4); }
+  if (w === 2) { scene.fog.color.lerp(new THREE.Color(0x8a95a0), 0.5); scene.background.lerp(new THREE.Color(0x8a95a0), 0.4); sun.intensity *= 0.5; }
+  if (ACT2.rain && ACT2.rain.visible) {
+    const arr = ACT2.rain.geometry.attributes.position.array;
+    const cx = player ? player.pos.x : 0, cz = player ? player.pos.z : 0;
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i + 1] -= 55 * dt;
+      if (arr[i + 1] < 0) { arr[i + 1] = 38; arr[i] = cx + rand(-38, 38); arr[i + 2] = cz + rand(-38, 38); }
+    }
+    ACT2.rain.geometry.attributes.position.needsUpdate = true;
+    ACT2.rain.material.opacity = 0.5;
+    if (Math.random() < 0.02) tone(rand(1200, 2000), 0.02, 'sine', 0.01);
+  }
+}
+
+function updateActII(dt, now) {
+  updateWeather(dt, now);
+  updateFishing(dt, now);
+  if (ACT2.zip.riding) updateZip(dt);
+  updateTrial(dt, now);
+  // downtown visit achievement
+  if (player && ACT2.downtownCenter && Math.hypot(player.pos.x - ACT2.downtownCenter.x, player.pos.z - ACT2.downtownCenter.z) < 14) award('downtown');
+}
+
+// ---- Act II HUD: weather button + fishing bar ----
+(function actIIControls() {
+  const cluster = document.getElementById('actglobal');
+  if (cluster) {
+    const b = document.createElement('button');
+    b.className = 'ui'; b.textContent = '🌦️'; b.title = 'Cycle weather';
+    b.style.cssText = 'width:40px;height:40px;border-radius:50%;border:2px solid #ffffffaa;background:rgba(12,26,18,0.75);font-size:18px;cursor:pointer;';
+    b.addEventListener('click', () => { initAudio(); cycleWeather(); });
+    cluster.appendChild(b);
+  }
+  const bar = document.createElement('div');
+  bar.id = 'fishbar';
+  bar.style.cssText = 'display:none;position:fixed;z-index:13;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%;transform:translateX(-50%);flex-direction:column;align-items:center;gap:8px;';
+  const status = document.createElement('div');
+  status.id = 'fishstatus';
+  status.style.cssText = 'background:rgba(12,26,18,0.9);color:#fff;border:2px solid #6bb8ff;border-radius:14px;padding:8px 16px;font-weight:bold;font-size:15px;';
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;';
+  function fbtn(label, fn, color) {
+    const x = document.createElement('button'); x.className = 'ui'; x.textContent = label;
+    x.style.cssText = `background:rgba(12,26,18,0.9);color:#fff;border:2px solid ${color};border-radius:22px;padding:11px 18px;font-weight:bold;font-size:15px;cursor:pointer;`;
+    x.addEventListener('click', () => { initAudio(); fn(); });
+    row.appendChild(x);
+  }
+  fbtn('🎣 Cast', castLine, '#7ee08a');
+  fbtn('🎯 Reel!', reelIn, '#ffd166');
+  fbtn('✕ Done', endFishing, '#ffffff77');
+  bar.appendChild(status); bar.appendChild(row);
+  document.body.appendChild(bar);
+})();
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyF' && ACT2.fishing.active) reelIn();
+});
+
 // ---------- Main loop ----------
 let last = performance.now();
 function frame(now) {
@@ -3424,6 +3766,7 @@ function frame(now) {
   last = now;
 
   updateDayNight(dt, now);
+  updateActII(dt, now);
   if (player) {
     if (photo.on) {
       // frozen for framing — camera still orbits via drag; no gameplay
@@ -3431,6 +3774,12 @@ function frame(now) {
       updateDriving(dt, now);
     } else if (RIDE.riding) {
       updateRiding(dt);
+    } else if (ACT2.zip.riding) {
+      // gliding the zipline — handled in updateActII
+    } else if (ACT2.zip.atTop) {
+      player.pos.copy(ACT2.zip.start); // pinned on the platform until you zip
+    } else if (ACT2.fishing.active) {
+      // standing on the dock, line in the water
     } else {
       // gather input
       let ix = touch.vx, iz = touch.vz;
@@ -3455,7 +3804,7 @@ function frame(now) {
       if (Math.hypot(player.pos.x - henryCowell.fremont.x, player.pos.z - henryCowell.fremont.z) < 1.8) award('fremont');
     }
     for (const ch of family) if (ch !== player) updateAI(ch, dt);
-    if (!photo.on && !car.occupied && !RIDE.riding) {
+    if (!photo.on && !car.occupied && !RIDE.riding && !ACT2.zip.riding && !ACT2.zip.atTop && !ACT2.fishing.active) {
       updateActivities(dt, now);
       updateMission(dt);
       randomQuips(dt);
@@ -3491,7 +3840,9 @@ requestAnimationFrame(frame);
 
 // tiny hook for automated tests
 window.__test = { setCam(y, p, d) { camYaw = y; camPitch = p; camDist = d; }, switchTo, family };
-window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, photo: () => photo.on, riding: () => RIDE.riding };
+window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, photo: () => photo.on, riding: () => RIDE.riding,
+  weather: () => ACT2.weather, fishing: () => ACT2.fishing.active, zip: () => ACT2.zip.riding, trial: () => ACT2.trial.active,
+  cycleWeather, startFishing, castLine, reelIn };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
