@@ -62,4 +62,4 @@ nothing can break.
 
 CC0 assets need no credit. If you use any CC-BY asset, list it here:
 
-- *(artist — asset name — source URL)*
+- This work is based on "Redwood Tree 2" (https://sketchfab.com/3d-models/redwood-tree-2-2c34fb28a756474eb8072a450c8f632b) by rhcreations (https://sketchfab.com/rhcreations) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
