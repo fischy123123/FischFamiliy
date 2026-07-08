@@ -8,7 +8,7 @@
 
 // ---------- Basic setup ----------
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -230,6 +230,16 @@ const treeReg = [];   // every redwood
 const rockReg = [];   // every rock/boulder
 const foliageRef = {};
 const grassRef = {};
+// ---- Act I state: day/night, driving, swimming, riding ----
+const dayNight = { t: 0.42, override: null, dayF: 1, nightF: 0 };
+const nightBulbMats = []; // emissive bulb materials that brighten after dark
+const cloudMats = [];
+const swimZones = [];     // {x,z,r} circles and {minX,maxX,minZ,maxZ} rects
+let domeRef = null, sunGlowRef = null, starsRef = null, firefliesRef = null;
+let flashlight = null, porchLight = null;
+const photo = { on: false };
+const RIDE = { flagged: false, riding: false };
+const henryCowell = {}, trainPlatform = {}, nightSky = {}, calendar = {};
 
 // Colliders
 const colliders = []; // {type:'box',minX,maxX,minZ,maxZ} | {type:'circle',x,z,r}
@@ -237,6 +247,7 @@ function addBoxCollider(minX, maxX, minZ, maxZ) { colliders.push({ type: 'box', 
 function addCircleCollider(x, z, r) { colliders.push({ type: 'circle', x, z, r }); }
 function collide(pos, radius) {
   for (const c of colliders) {
+    if (c.disabled) continue;
     if (c.type === 'circle') {
       const dx = pos.x - c.x, dz = pos.z - c.z;
       const d = Math.hypot(dx, dz), min = c.r + radius;
@@ -252,8 +263,10 @@ function collide(pos, radius) {
       }
     }
   }
+  // world edge — but let people roam out to Henry Cowell past the river (z > 27)
   const dist = Math.hypot(pos.x, pos.z);
-  if (dist > 82) { pos.x *= 82 / dist; pos.z *= 82 / dist; } // world edge
+  const edge = pos.z > 27 ? 92 : 82;
+  if (dist > edge) { pos.x *= edge / dist; pos.z *= edge / dist; }
 }
 function spotIsClear(x, z, r) {
   for (const c of colliders) {
@@ -288,6 +301,7 @@ function clearSpot(minR, maxR, r) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const dome = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }));
   scene.add(dome);
+  domeRef = dome; // tinted through the day/night cycle
 })();
 // image-based lighting: every PBR surface reflects a sky/forest/sun environment
 (function environmentLight() {
@@ -499,10 +513,11 @@ woodSign(27, 39.9, Math.PI + 0.4, ['HENRY COWELL', 'REDWOODS', 'STATE PARK'], 3.
   cyl(0.06, 0.08, 2.6, 0x5a4534, 20, 1.3, 18.2, null, 6);
   for (let i = 0; i <= 10; i++) {
     const t = i / 10;
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5),
-      new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xc9a24a }));
+    const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xc9a24a });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), bm);
     bulb.position.set(10 + t * 10, 2.5 - Math.sin(t * Math.PI) * 0.5, 18.2);
     scene.add(bulb);
+    nightBulbMats.push({ m: bm, base: 0xc9a24a, twinkle: rand(0, 9) }); // twinkles after dark
   }
 })();
 
@@ -522,7 +537,9 @@ woodSign(27, 39.9, Math.PI + 0.4, ['HENRY COWELL', 'REDWOODS', 'STATE PARK'], 3.
     ties.setMatrixAt(i, dummy.matrix);
   }
   scene.add(ties);
-  addBoxCollider(-95, 95, TZ - 1.2, TZ + 1.2); // nobody stands on the tracks
+  // nobody stands on the tracks — except a level crossing aligned with the bridge (x 18–25)
+  addBoxCollider(-95, 18, TZ - 1.2, TZ + 1.2);
+  addBoxCollider(25, 95, TZ - 1.2, TZ + 1.2);
 })();
 const train = (function () {
   const g = new THREE.Group(); scene.add(g);
@@ -719,17 +736,29 @@ addBoxCollider(2, 14, -27.5, -18.3);
 addBoxCollider(-2, 2, -26.3, -19.7);
 
 // White Mini in the driveway
-(function miniCooper() {
+const car = (function miniCooper() {
   const g = new THREE.Group(); g.position.set(-17, 0, -12); g.rotation.y = 0.4; scene.add(g);
   box(2, 0.75, 4, 0xf2f2f2, 0, 0.75, 0, g);
   box(1.7, 0.6, 2.2, 0x1a1a1a, 0, 1.4, -0.2, g);
+  const wheels = [];
   for (const [x, z] of [[-0.95, 1.3], [0.95, 1.3], [-0.95, -1.3], [0.95, -1.3]]) {
     const w = cyl(0.35, 0.35, 0.25, 0x111111, x, 0.35, z, g, 12);
     w.rotation.z = Math.PI / 2;
+    wheels.push(w);
   }
   box(0.5, 0.15, 0.1, 0xfff3b0, -0.6, 0.8, 2.0, g); box(0.5, 0.15, 0.1, 0xfff3b0, 0.6, 0.8, 2.0, g);
-  addBoxCollider(-19, -15, -14.5, -9.5);
+  // brake lights
+  box(0.4, 0.12, 0.08, 0x7a1010, -0.6, 0.85, -2.02, g); box(0.4, 0.12, 0.08, 0x7a1010, 0.6, 0.85, -2.02, g);
+  // headlight cones for night driving
+  const hl = new THREE.SpotLight(0xfff2cc, 0, 34, 0.6, 0.5, 1.2);
+  hl.position.set(0, 0.9, 2.1);
+  const hlTarget = new THREE.Object3D(); hlTarget.position.set(0, 0, 14); g.add(hlTarget);
+  hl.target = hlTarget; g.add(hl);
+  return { g, wheels, headlight: hl, heading: 0.4, speed: 0, occupied: false,
+           colliderId: colliders.length };
 })();
+addBoxCollider(-19, -15, -14.5, -9.5);
+car.colliderIndex = colliders.length - 1; // removed while driving
 
 // Fence (right side, like the photos)
 for (let i = 0; i < 9; i++) box(0.15, 1.7, 1.9, 0x7a4f33, 15.5, 0.85, -18 + i * 2).material = plankMat;
@@ -1088,8 +1117,21 @@ for (let i = 0; i < 12; i++) {
     }
   }
   const lantern = box(0.16, 0.26, 0.12, 0x2b2118, -1.1, 2.5, 4.56, houseL);
+  const glowM = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
   const glow = box(0.1, 0.16, 0.1, 0xffd28a, -1.1, 2.5, 4.58, houseL);
-  glow.material = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
+  glow.material = glowM;
+  nightBulbMats.push({ m: glowM, base: 0xcc8a30 });
+  // warm porch point light that switches on at dusk (world coords: houseL at -8,-23)
+  porchLight = new THREE.PointLight(0xffce85, 0, 10, 1.6);
+  porchLight.position.set(-9.1, 2.5, -18.4);
+  scene.add(porchLight);
+  // lit windows after dark
+  for (const [wx, wy] of [[-11, 3.6], [-5, 3.6], [5.2, 6]]) {
+    const wm = new THREE.MeshLambertMaterial({ color: 0x3a4a55, emissive: 0x000000 });
+    const w = box(1.5, 1.7, 0.05, 0x3a4a55, wx, wy, 4.66, houseL);
+    w.material = wm;
+    nightBulbMats.push({ m: wm, base: 0xffcf87, window: true });
+  }
 })();
 // ---- photoreal atmosphere layer ----
 // soft contact shadows under everything (fakes ambient occlusion, one draw call)
@@ -1157,6 +1199,7 @@ const mists = [];
   sp.position.copy(sun.position).normalize().multiplyScalar(225);
   sp.scale.setScalar(85);
   scene.add(sp);
+  sunGlowRef = sp; // follows the sun and fades at night
 })();
 // split-rail fence along the bridge path (that trailhead look)
 (function splitRail() {
@@ -1189,6 +1232,7 @@ for (let i = 0; i < 7; i++) {
   g.position.set(rand(-100, 100), rand(38, 56), rand(-90, 50));
   scene.add(g);
   clouds.push({ g, v: rand(0.6, 1.4) });
+  cloudMats.push(puffMat); // dimmed at night
 }
 // sun shafts slanting between the redwoods
 const shaftMat = new THREE.MeshBasicMaterial({
@@ -2198,6 +2242,13 @@ const ACH_LIST = {
   golden: '🐌✨ Legend of Greg — found the Golden Slug',
   family: '✋ Full House — high-fived the whole family',
   goal: '⚽ Top Fisch — scored a goal',
+  drive: '🚗 Licensed to Thrill — drove the Mini',
+  stargaze: '🌌 Dark Skies — saw the stars over Felton',
+  swim: '🏊 Garden of Eden — took a dip in the San Lorenzo',
+  plunge: '🪨 Cannonball! — leapt off the jump rock',
+  fremont: '🌲 Inside the Giant — stepped into the Fremont Tree',
+  train: '🚂 All Aboard — rode the Roaring Camp railroad',
+  photo: '📷 Say Cheese — took a photo',
 };
 const ach = { unlocked: {}, bounceStreak: 0, hifived: {} };
 function achCount() { return Object.keys(ach.unlocked).length; }
@@ -2488,7 +2539,6 @@ const MAIL_LINES = [
   '📬 The neighbor’s mail. Again. Off to the RV resort with you.',
 ];
 const objectActions = [
-  { key: 'car', label: '🚗 Honk', near: p => Math.hypot(p.x + 17, p.z + 12) < 3.2, fn() { tone(310, 0.25, 'square', 0.12); tone(392, 0.25, 'square', 0.12); tone(310, 0.3, 'square', 0.12, 0.35); tone(392, 0.3, 'square', 0.12, 0.35); toast('🚗 BEEP BEEP! The Mini is pleased.', 2.5); award('honk'); } },
   { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 3.5, p.z - 8.5) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
   { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x + 8, p.z + 17.6) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
@@ -2517,6 +2567,22 @@ window.addEventListener('keydown', e => {
   if (idx !== undefined && currentActions[idx]) { currentActions[idx].fn(currentActions[idx].target); currentKey = ''; }
 });
 function updateInteractions() {
+  // vehicle / train states take priority
+  if (car.occupied) { setActions('driving', [{ label: '🚪 Get out', fn: exitCar }]); return; }
+  if (RIDE.riding) { setActions('riding', [{ label: '📣 Whistle', fn: trainWhistle }, { label: '🚪 Hop off', fn: hopOffTrain }]); return; }
+  if (player) {
+    if (car.g.position.distanceTo(player.pos) < 3.4) {
+      setActions('car', [
+        { label: '🚗 Drive', fn: enterCar },
+        { label: '📣 Honk', fn: () => { tone(310, 0.25, 'square', 0.12); tone(392, 0.25, 'square', 0.12); tone(310, 0.3, 'square', 0.12, 0.35); toast('🚗 BEEP BEEP! The Mini is pleased.', 2.5); award('honk'); } },
+      ]);
+      return;
+    }
+    if (Math.hypot(player.pos.x - trainPlatform.pos.x, player.pos.z - trainPlatform.pos.z) < 3.5) {
+      setActions('train', [{ label: '🚂 Ride the train', fn: boardTrain }]);
+      return;
+    }
+  }
   // nearest family member first
   let best = null, bd = 2.4;
   for (const f of family) {
@@ -2876,6 +2942,7 @@ CHARS.forEach((c, i) => {
     document.getElementById('hud').style.display = 'block';
     startMission(0);
     tada();
+    if (calendar.message) setTimeout(() => toast(calendar.message, 5), 3500);
   });
   cardsEl.appendChild(card);
 });
@@ -2895,6 +2962,460 @@ function updateCamera(dt) {
 camera.position.set(0, 8, 14);
 camera.lookAt(0, 2, -10);
 
+// ============================================================
+//  ACT I — day/night, driving, Henry Cowell, train rides,
+//  calendar magic, and photo mode
+// ============================================================
+
+// ---- Henry Cowell Redwoods: Fremont Tree + Garden of Eden swimming hole ----
+(function buildHenryCowell() {
+  // the hollow Fremont Tree you can walk inside (real landmark), NW of the crossing
+  const FX = -6, FZ = 48;
+  const shell = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 2.9, 15, 16, 1, true, Math.PI * 0.28, Math.PI * 1.72),
+    new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 0.14, roughness: 1, side: THREE.DoubleSide })
+  );
+  shell.position.set(FX, 7.5, FZ); shell.castShadow = true; scene.add(shell);
+  // dark hollow interior cap
+  const capM = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.4, 16), mat(0x140f0a));
+  capM.position.set(FX, 3.4, FZ); scene.add(capM);
+  for (let i = 0; i < 4; i++) { // canopy way up top
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(5 - i, 6, 8), i % 2 ? foliageMat : foliageMat2);
+    cone.position.set(FX, 15 + i * 3, FZ); cone.castShadow = true; scene.add(cone);
+  }
+  // ring of wall colliders leaves a doorway gap facing the crossing (south, -z side open)
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 7) {
+    if (a > Math.PI * 0.75 && a < Math.PI * 1.25) continue; // south doorway
+    addCircleCollider(FX + Math.cos(a) * 2.5, FZ + Math.sin(a) * 2.5, 0.55);
+  }
+  blobs.push({ x: FX, z: FZ, r: 3.2 });
+  henryCowell.fremont = { x: FX, z: FZ };
+
+  // Garden of Eden swimming hole — a bend in the San Lorenzo, NE of the crossing
+  const PX = 17, PZ = 50, PR = 6.5;
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(PR, 32),
+    new THREE.MeshPhongMaterial({ map: waterTex, transparent: true, opacity: 0.9, shininess: 110, specular: 0xbfe0ea }));
+  pool.rotation.x = -Math.PI / 2; pool.position.set(PX, 0.04, PZ); scene.add(pool);
+  henryCowell.pool = { x: PX, z: PZ, r: PR, waterY: 0 };
+  swimZones.push({ x: PX, z: PZ, r: PR - 0.6 });
+  // sandy/rocky rim
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * Math.PI * 2;
+    const rock = new THREE.Mesh(new THREE.SphereGeometry(rand(0.35, 0.7), 6, 5), mat(0x7d7c72));
+    rock.scale.y = 0.6;
+    rock.position.set(PX + Math.cos(a) * (PR + 0.5), 0.12, PZ + Math.sin(a) * (PR + 0.5));
+    rock.castShadow = true; scene.add(rock);
+  }
+  // the jump rock — climb it, leap off, cannonball
+  const jr = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 6), mat(0x6f6e64));
+  jr.scale.set(1.1, 1.5, 1.1); jr.position.set(PX - PR - 1.2, 1.4, PZ); jr.castShadow = true; scene.add(jr);
+  const step = new THREE.Mesh(new THREE.SphereGeometry(1, 7, 5), mat(0x6f6e64));
+  step.scale.set(1.2, 0.7, 1.2); step.position.set(PX - PR - 2.6, 0.5, PZ + 1.2); step.castShadow = true; scene.add(step);
+  henryCowell.jumpRock = { x: PX - PR - 1.2, z: PZ, top: 2.9 };
+  addCircleCollider(PX - PR - 2.6, PZ + 1.2, 0.9);
+  // a couple of trailhead logs to sit on
+  for (const [lx, lz, lr] of [[8, 44, 0.5], [24, 46, 0.4]]) {
+    const log = cyl(lr, lr, 3, 0x5f4230, lx, lr, lz, null, 8);
+    log.rotation.z = Math.PI / 2; log.rotation.y = rand(0, 3);
+    addCircleCollider(lx, lz, 0.6);
+  }
+})();
+
+// ---- Roaring Camp flag-stop platform at the level crossing ----
+(function buildPlatform() {
+  const PX = 24, PZ = 44;
+  const deck = box(4, 0.4, 3, 0x7a5636, PX, 0.2, PZ);
+  deck.material = new THREE.MeshLambertMaterial({ map: plankTex });
+  box(0.15, 1.6, 0.15, 0x4a3423, PX - 1.8, 1, PZ - 1.3);
+  box(0.15, 1.6, 0.15, 0x4a3423, PX + 1.8, 1, PZ - 1.3);
+  box(4, 0.15, 0.15, 0x4a3423, PX, 1.75, PZ - 1.3);
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#3a2a18'; c.fillRect(0, 0, 256, 64);
+  c.fillStyle = '#f2d9a0'; c.font = 'bold 26px Georgia'; c.textAlign = 'center';
+  c.fillText('ROARING CAMP', 128, 28); c.fillText('FLAG STOP', 128, 54);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+  sign.position.set(PX, 2.4, PZ - 1.22); scene.add(sign);
+  addCircleCollider(PX - 1.8, PZ - 1.3, 0.3); addCircleCollider(PX + 1.8, PZ - 1.3, 0.3);
+  trainPlatform.pos = { x: PX, z: PZ };
+})();
+
+// ---- Night sky: stars, Milky Way, moon ----
+(function buildNightSky() {
+  const N = 1400;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+  const cc = new THREE.Color();
+  for (let i = 0; i < N; i++) {
+    // upper hemisphere of a big sphere
+    const theta = Math.random() * Math.PI * 2, phi = Math.acos(Math.random()); // 0..π/2 from zenith
+    const R = 260;
+    let x = Math.sin(phi) * Math.cos(theta), y = Math.cos(phi), z = Math.sin(phi) * Math.sin(theta);
+    // condense some into a Milky Way band
+    if (Math.random() < 0.4) {
+      const band = theta;
+      x = Math.cos(band); z = Math.sin(band); y = rand(0.25, 0.75) + Math.sin(band * 3) * 0.05;
+      const n = Math.hypot(x, y, z); x /= n; y /= n; z /= n;
+    }
+    pos[i * 3] = x * R; pos[i * 3 + 1] = Math.abs(y) * R + 8; pos[i * 3 + 2] = z * R;
+    const w = rand(0.6, 1); cc.setRGB(w, w, rand(0.85, 1));
+    col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  starsRef = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 1.4, vertexColors: true, transparent: true, opacity: 0, depthWrite: false, fog: false, sizeAttenuation: true,
+  }));
+  scene.add(starsRef);
+  // moon
+  const mcv = document.createElement('canvas'); mcv.width = mcv.height = 128;
+  const mc = mcv.getContext('2d');
+  const mg = mc.createRadialGradient(64, 64, 8, 64, 64, 62);
+  mg.addColorStop(0, 'rgba(255,255,245,1)'); mg.addColorStop(0.5, 'rgba(240,242,230,0.7)'); mg.addColorStop(1, 'rgba(230,235,220,0)');
+  mc.fillStyle = mg; mc.fillRect(0, 0, 128, 128);
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(mcv), transparent: true, depthWrite: false, fog: false, opacity: 0, blending: THREE.AdditiveBlending }));
+  moon.scale.setScalar(26); moon.position.set(-120, 130, -120); scene.add(moon);
+  nightSky.moon = moon;
+})();
+
+// ---- Fireflies over the yard at night ----
+(function fireflies() {
+  const N = 60;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const seed = [];
+  for (let i = 0; i < N; i++) {
+    const x = rand(-20, 20), z = rand(-26, 12);
+    pos[i * 3] = x; pos[i * 3 + 1] = rand(0.4, 2.6); pos[i * 3 + 2] = z;
+    seed.push({ x, z, ph: rand(0, 9), sp: rand(0.3, 0.8) });
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  firefliesRef = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xd8ff8a, size: 0.16, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+  }));
+  firefliesRef.userData.seed = seed;
+  scene.add(firefliesRef);
+})();
+
+// ---- Player flashlight (auto-on after dark, on foot) ----
+flashlight = new THREE.SpotLight(0xfff0d0, 0, 26, 0.5, 0.6, 1.3);
+flashlight.position.set(0, 2, 0);
+const flashTarget = new THREE.Object3D();
+scene.add(flashTarget);
+flashlight.target = flashTarget;
+scene.add(flashlight);
+
+// ---- Day/night driver ----
+function updateDayNight(dt, now) {
+  if (dayNight.override == null) dayNight.t = (dayNight.t + dt / 300) % 1; // ~5 min full cycle
+  else dayNight.t = dayNight.override;
+  const t = dayNight.t;
+  const sunH = Math.sin((t - 0.25) * Math.PI * 2);       // +1 noon, -1 midnight
+  const az = t * Math.PI * 2;
+  dayNight.dayF = Math.max(0, Math.min(1, (sunH + 0.12) / 0.3));
+  dayNight.nightF = 1 - dayNight.dayF;
+  const dF = dayNight.dayF, nF = dayNight.nightF;
+  // sun light
+  sun.position.set(Math.cos(az) * 60, Math.max(-8, sunH * 72), Math.sin(az) * 45 + 6);
+  const horizon = Math.max(0, 1 - Math.abs(sunH) * 3); // orange near sunrise/sunset
+  sun.color.setRGB(1, 0.85 - horizon * 0.25 + dF * 0.05, 0.62 + dF * 0.28 - horizon * 0.2);
+  sun.intensity = 0.05 + dF * 1.55;
+  hemi.intensity = 0.06 + dF * 0.5;
+  hemi.color.setRGB(0.1 + dF * 0.52, 0.16 + dF * 0.6, 0.28 + dF * 0.62);
+  hemi.groundColor.setRGB(0.05 + dF * 0.1, 0.08 + dF * 0.14, 0.05 + dF * 0.08);
+  // sky dome + fog
+  if (domeRef) domeRef.material.color.setRGB(0.06 + dF * 0.94, 0.08 + dF * 0.92, 0.2 + dF * 0.8);
+  scene.background.setRGB(0.04 + dF * 0.58, 0.06 + dF * 0.72, 0.14 + dF * 0.78);
+  scene.fog.color.setRGB(0.09 + dF * 0.62, 0.12 + dF * 0.66, 0.2 + dF * 0.52);
+  // sun glow sprite
+  if (sunGlowRef) {
+    sunGlowRef.position.copy(sun.position).normalize().multiplyScalar(230);
+    sunGlowRef.material.opacity = Math.max(0, dF - 0.1) + horizon * 0.5 * dF;
+    sunGlowRef.scale.setScalar(85 + horizon * 40);
+  }
+  // stars + moon
+  if (starsRef) starsRef.material.opacity = nF;
+  if (nightSky.moon) {
+    nightSky.moon.material.opacity = nF * 0.9;
+    nightSky.moon.position.set(Math.cos(az + Math.PI) * 150, Math.max(20, -sunH * 120 + 30), Math.sin(az + Math.PI) * 150);
+  }
+  // clouds dim, fireflies glow, night lamps
+  for (const m of cloudMats) { m.opacity = 0.12 + dF * 0.8; m.color.setRGB(0.35 + dF * 0.65, 0.38 + dF * 0.62, 0.45 + dF * 0.55); }
+  if (firefliesRef) firefliesRef.material.opacity = nF * (0.5 + Math.sin(now * 0.004) * 0.5);
+  if (porchLight) porchLight.intensity = nF * 1.5;
+  for (const b of nightBulbMats) {
+    if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF); }
+    else { const tw = 0.6 + Math.sin(now * 0.006 + (b.twinkle || 0)) * 0.4; b.m.emissive.setHex(b.base); b.m.emissive.multiplyScalar(0.3 + nF * tw); }
+  }
+  renderer.toneMappingExposure = 0.7 + nF * 0.28; // lift a touch so night is moody, not black
+}
+
+// ---- Flashlight + fireflies motion (called each frame) ----
+function updateNightFX(dt, now) {
+  if (firefliesRef && dayNight.nightF > 0.05) {
+    const arr = firefliesRef.geometry.attributes.position.array;
+    const seed = firefliesRef.userData.seed;
+    for (let i = 0; i < seed.length; i++) {
+      const s = seed[i];
+      arr[i * 3] = s.x + Math.sin(now * 0.0008 * s.sp + s.ph) * 2.2;
+      arr[i * 3 + 1] = 0.5 + (Math.sin(now * 0.0011 + s.ph) * 0.5 + 0.5) * 2.2;
+      arr[i * 3 + 2] = s.z + Math.cos(now * 0.0007 * s.sp + s.ph * 1.3) * 2.2;
+    }
+    firefliesRef.geometry.attributes.position.needsUpdate = true;
+  }
+  const onFoot = player && !car.occupied && !RIDE.riding && !photo.on;
+  if (flashlight) {
+    const want = (onFoot && dayNight.nightF > 0.4) ? 1.6 * dayNight.nightF : 0;
+    flashlight.intensity += (want - flashlight.intensity) * Math.min(1, dt * 6);
+    if (player) {
+      flashlight.position.set(player.pos.x, player.pos.y + 1.6, player.pos.z);
+      flashTarget.position.set(
+        player.pos.x + Math.sin(player.heading) * 8,
+        player.pos.y + 0.3,
+        player.pos.z + Math.cos(player.heading) * 8
+      );
+    }
+  }
+  // stargazing achievement
+  if (onFoot && dayNight.nightF > 0.8) award('stargaze');
+}
+
+// ---- Driving the Mini ----
+function enterCar() {
+  if (!player || car.occupied) return;
+  car.occupied = true;
+  car.heading = car.g.rotation.y;
+  colliders[car.colliderIndex].disabled = true;
+  player.group.visible = false;
+  toast('🚗 You’re driving! WASD / joystick to drive · tap 🚪 to hop out', 4);
+  tone(90, 0.3, 'sawtooth', 0.06);
+  award('drive');
+}
+function exitCar() {
+  if (!car.occupied) return;
+  car.occupied = false;
+  car.speed = 0;
+  colliders[car.colliderIndex].disabled = false;
+  player.group.visible = true;
+  // step out beside the driver door
+  player.pos.set(car.g.position.x - Math.cos(car.heading) * 2.2, 0, car.g.position.z + Math.sin(car.heading) * 2.2);
+  collide(player.pos, 0.45);
+}
+function updateDriving(dt, now) {
+  let throttle = 0, steer = 0;
+  if (keys.KeyW || keys.ArrowUp) throttle += 1;
+  if (keys.KeyS || keys.ArrowDown) throttle -= 1;
+  if (keys.KeyA || keys.ArrowLeft) steer -= 1;
+  if (keys.KeyD || keys.ArrowRight) steer += 1;
+  throttle += -touch.vz; steer += touch.vx;
+  const maxSpd = 17;
+  car.speed += throttle * 14 * dt;
+  car.speed *= (1 - 1.1 * dt);                       // rolling friction
+  car.speed = Math.max(-6, Math.min(maxSpd, car.speed));
+  if (Math.abs(car.speed) > 0.15) {
+    car.heading -= steer * 1.5 * dt * Math.sign(car.speed) * Math.min(1, Math.abs(car.speed) / 4);
+  }
+  const nx = car.g.position.x + Math.sin(car.heading) * car.speed * dt;
+  const nz = car.g.position.z + Math.cos(car.heading) * car.speed * dt;
+  const p = new THREE.Vector3(nx, 0, nz);
+  collide(p, 1.5);
+  if (p.distanceTo(car.g.position) < Math.abs(car.speed) * dt * 0.5) car.speed *= 0.4; // bumped something
+  car.g.position.x = p.x; car.g.position.z = p.z;
+  car.g.rotation.y = car.heading;
+  for (const w of car.wheels) w.rotation.x += car.speed * dt * 3;
+  car.headlight.intensity = dayNight.nightF * 2.2;
+  // glue player + camera to the car
+  player.pos.set(car.g.position.x, 0.9, car.g.position.z);
+  player.heading = car.heading;
+  if (Math.abs(car.speed) > 6 && Math.random() < 0.04) tone(70 + Math.abs(car.speed) * 3, 0.1, 'sawtooth', 0.03);
+}
+
+// ---- Swimming (Garden of Eden) ----
+function applySwim(ch) {
+  for (const z of swimZones) {
+    if (Math.hypot(ch.pos.x - z.x, ch.pos.z - z.z) < z.r) {
+      const bob = Math.sin(performance.now() * 0.004) * 0.06;
+      if (ch.pos.y < -0.15) ch === player && ch.vy > -3 && (ch.vy = 0);
+      ch.pos.y = -0.28 + bob;
+      ch.vy = 0; ch.grounded = true;
+      // paddle
+      ch.parts.lArm.rotation.x = Math.sin(performance.now() * 0.01) * 1.2 - 0.5;
+      ch.parts.rArm.rotation.x = -Math.sin(performance.now() * 0.01) * 1.2 - 0.5;
+      if (ch === player) {
+        award('swim');
+        if (!applySwim.splashT || performance.now() - applySwim.splashT > 700) {
+          applySwim.splashT = performance.now();
+          tone(rand(400, 700), 0.08, 'sine', 0.04);
+        }
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---- Riding the Roaring Camp train ----
+function boardTrain() {
+  if (RIDE.riding || !player) return;
+  RIDE.riding = true;
+  player.group.visible = false;
+  // launch the train from the west heading east
+  train.phase = 'run'; train.t = 26; train.dir = 1;
+  train.g.position.x = -60; train.g.rotation.y = 0;
+  trainWhistle();
+  toast('🚂 All aboard! Pulling out of the station… tap 🚪 to hop off', 4.5);
+  award('train');
+}
+function hopOffTrain() {
+  if (!RIDE.riding) return;
+  RIDE.riding = false;
+  player.group.visible = true;
+  player.pos.set(trainPlatform.pos.x, 0, trainPlatform.pos.z + 2);
+}
+function updateRiding(dt) {
+  // seat the player on the open excursion car (local +x ~4.9 from the loco)
+  const seatX = train.g.position.x + (train.dir > 0 ? 4.9 : -4.9);
+  player.pos.set(seatX, 1.7, 41.8);
+  player.heading = train.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  if (train.phase !== 'run') hopOffTrain(); // ride ended, drop back at platform
+}
+
+// ---- Calendar magic: real dates decorate the yard ----
+(function buildCalendar() {
+  const BIRTHDAYS = [
+    { name: 'Liam', m: 4, d: 9 }, { name: 'Maddie', m: 8, d: 29 },
+    { name: 'Rowan', m: 8, d: 3 }, { name: 'Faylen', m: 11, d: 13 },
+  ];
+  const now = new Date();
+  const M = now.getMonth() + 1, D = now.getDate();
+  function balloon(x, z, color) {
+    const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), mat(color));
+    b.scale.y = 1.25; b.position.y = 3.0; b.castShadow = true; g.add(b);
+    cyl(0.01, 0.01, 2.7, 0xbbbbbb, 0, 1.65, 0, g, 4);
+    swayers.push({ obj: b, phase: rand(0, 9), amp: 0.08 });
+    return g;
+  }
+  const todayBday = BIRTHDAYS.find(b => b.m === M && b.d === D);
+  if (todayBday) {
+    const colors = [0xff5a5a, 0x6bb8ff, 0xffd166, 0x7ee08a, 0xd9a3ff];
+    for (let i = 0; i < 8; i++) balloon(-12 + i * 1.4, -15 + (i % 2) * 1.2, colors[i % 5]);
+    // banner across the porch
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#ff4d6d'; c.fillRect(0, 0, 512, 96);
+    c.fillStyle = '#fff'; c.font = 'bold 44px Trebuchet MS'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('HAPPY BIRTHDAY ' + todayBday.name.toUpperCase() + '!', 256, 50);
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.3), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
+    banner.position.set(-8, 5.6, -17.6); scene.add(banner);
+    // cake on the picnic table
+    const cake = cyl(0.5, 0.55, 0.4, 0xfff0e0, 12.5, 1.0, 19.2, null, 16);
+    cyl(0.5, 0.5, 0.06, 0xffb3c8, 12.5, 1.25, 19.2, null, 16);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cyl(0.02, 0.02, 0.2, 0xffe08a, 12.5 + Math.cos(a) * 0.3, 1.4, 19.2 + Math.sin(a) * 0.3, null, 4); }
+    calendar.message = '🎂 It’s ' + todayBday.name + '’s birthday today! The yard threw a party.';
+  } else if (M === 12 && D <= 26) {
+    // holiday string lights along the eaves + a wreath
+    for (let i = 0; i <= 14; i++) {
+      const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: [0xd83a3a, 0x3ad86a, 0xffd166, 0x6bb8ff][i % 4] });
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), bm);
+      bulb.position.set(-14 + i * 1.0, 5.4 - Math.sin(i / 14 * Math.PI) * 0.2, -18.4);
+      scene.add(bulb); nightBulbMats.push({ m: bm, base: [0xd83a3a, 0x3ad86a, 0xffd166, 0x6bb8ff][i % 4], twinkle: i });
+    }
+    const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.14, 8, 16), mat(0x2f6a34));
+    wreath.position.set(-8, 2.4, 4.7); scene.add(wreath);
+    calendar.message = '🎄 Happy Holidays from Felton! The eaves are all lit up.';
+  } else if (M === 10 && D >= 20) {
+    // jack-o'-lanterns on the porch
+    for (const px of [-9.5, -6.5]) {
+      const pm = new THREE.MeshStandardMaterial({ color: 0xe8731f, emissive: 0x341300, roughness: 0.7 });
+      const pk = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), pm);
+      pk.scale.y = 0.82; pk.position.set(px, 0.5, 5.6); scene.add(pk);
+      nightBulbMats.push({ m: pm, base: 0xff7a1a, twinkle: px });
+    }
+    calendar.message = '🎃 Spooky season in the redwoods! Pumpkins on the porch.';
+  } else {
+    // everyday: gently count down to the next birthday so the calendar always feels alive
+    let best = null, bestDays = 999;
+    for (const b of BIRTHDAYS) {
+      let d = new Date(now.getFullYear(), b.m - 1, b.d);
+      if (d < now) d = new Date(now.getFullYear() + 1, b.m - 1, b.d);
+      const days = Math.ceil((d - now) / 86400000);
+      if (days < bestDays) { bestDays = days; best = b; }
+    }
+    if (best) calendar.message = `📅 ${bestDays} day${bestDays === 1 ? '' : 's'} until ${best.name}’s birthday!`;
+  }
+})();
+
+// ---- Photo mode ----
+const flashEl = document.createElement('div');
+flashEl.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:30;transition:opacity .35s';
+document.body.appendChild(flashEl);
+function togglePhoto() {
+  photo.on = !photo.on;
+  document.getElementById('hud').style.opacity = photo.on ? '0' : '1';
+  document.getElementById('bubbles').style.display = photo.on ? 'none' : 'block';
+  document.getElementById('photobar').style.display = photo.on ? 'flex' : 'none';
+  if (photo.on) toast('📷 Photo Mode — drag to aim, tap 📸 to capture', 3);
+}
+function capturePhoto() {
+  flashEl.style.opacity = '0.85';
+  setTimeout(() => { flashEl.style.opacity = '0'; }, 60);
+  tone(1200, 0.05, 'sine', 0.05); tone(1800, 0.05, 'sine', 0.04, 0.05);
+  try {
+    if (composer) composer.render(); else renderer.render(scene, camera);
+    const url = renderer.domElement.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url; a.download = 'fisch-family-' + Date.now() + '.png';
+    a.click();
+    award('photo');
+  } catch (e) { toast('Could not save photo on this device 😕', 3); }
+}
+
+// ---- Act I HUD controls (built in JS to avoid touching the shell) ----
+(function actIControls() {
+  const cluster = document.createElement('div');
+  cluster.id = 'actglobal';
+  cluster.style.cssText = 'position:fixed;z-index:12;right:calc(env(safe-area-inset-right,0px) + 60px);top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;gap:6px;';
+  function btn(label, title, fn) {
+    const b = document.createElement('button');
+    b.className = 'ui'; b.textContent = label; b.title = title;
+    b.style.cssText = 'width:40px;height:40px;border-radius:50%;border:2px solid #ffffffaa;background:rgba(12,26,18,0.75);font-size:18px;cursor:pointer;';
+    b.addEventListener('click', () => { initAudio(); fn(); });
+    cluster.appendChild(b);
+  }
+  btn('🌗', 'Cycle time of day', cycleTimeOfDay);
+  btn('📷', 'Photo mode', togglePhoto);
+  document.body.appendChild(cluster);
+
+  const pbar = document.createElement('div');
+  pbar.id = 'photobar';
+  pbar.style.cssText = 'display:none;position:fixed;z-index:31;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);left:50%;transform:translateX(-50%);gap:10px;';
+  const shoot = document.createElement('button');
+  shoot.className = 'ui'; shoot.textContent = '📸 Capture';
+  shoot.style.cssText = 'background:rgba(12,26,18,0.9);color:#fff;border:2px solid #ffd166;border-radius:24px;padding:12px 20px;font-weight:bold;font-size:16px;cursor:pointer;';
+  shoot.addEventListener('click', capturePhoto);
+  const exitp = document.createElement('button');
+  exitp.className = 'ui'; exitp.textContent = '✕ Exit';
+  exitp.style.cssText = 'background:rgba(12,26,18,0.9);color:#fff;border:2px solid #ffffff77;border-radius:24px;padding:12px 18px;font-weight:bold;font-size:16px;cursor:pointer;';
+  exitp.addEventListener('click', togglePhoto);
+  pbar.appendChild(shoot); pbar.appendChild(exitp);
+  document.body.appendChild(pbar);
+})();
+const TIME_STOPS = [0.42, 0.72, 0.78, 0.86, 0.0]; // morning, afternoon, sunset, dusk, night
+let timeStopIdx = 0;
+function cycleTimeOfDay() {
+  timeStopIdx = (timeStopIdx + 1) % TIME_STOPS.length;
+  dayNight.override = TIME_STOPS[timeStopIdx];
+  const names = ['☀️ Morning', '🌤️ Afternoon', '🌅 Sunset', '🌆 Dusk', '🌙 Night'];
+  toast(names[timeStopIdx] + '  (tap 🌗 again to change, it resumes drifting after a bit)', 3);
+  clearTimeout(cycleTimeOfDay.tmr);
+  cycleTimeOfDay.tmr = setTimeout(() => { dayNight.override = null; }, 25000);
+}
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyT') cycleTimeOfDay();
+  if (e.code === 'KeyP') togglePhoto();
+});
+
 // ---------- Main loop ----------
 let last = performance.now();
 function frame(now) {
@@ -2902,30 +3423,48 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
+  updateDayNight(dt, now);
   if (player) {
-    // gather input
-    let ix = touch.vx, iz = touch.vz;
-    if (keys.KeyW || keys.ArrowUp) iz -= 1;
-    if (keys.KeyS || keys.ArrowDown) iz += 1;
-    if (keys.KeyA || keys.ArrowLeft) ix -= 1;
-    if (keys.KeyD || keys.ArrowRight) ix += 1;
-    if (keys.Space) { if (player.grounded) { player.vy = player.cfg.jump; boing(); } }
-    const run = keys.ShiftLeft || keys.ShiftRight || touch.run;
-    // rotate input by camera yaw (forward = away from camera)
-    const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
-    const dx = ix * cos + iz * sin;
-    const dz = -ix * sin + iz * cos;
-    let spd = player.cfg.speed * (run ? 1.55 : 1);
-    if (player.buffT > 0) spd *= 1.3;            // snack power
-    if (family[5].riding > 0) spd *= 0.9;        // carrying Faylen
-    moveChar(player, dx, dz, dt, spd);
-
+    if (photo.on) {
+      // frozen for framing — camera still orbits via drag; no gameplay
+    } else if (car.occupied) {
+      updateDriving(dt, now);
+    } else if (RIDE.riding) {
+      updateRiding(dt);
+    } else {
+      // gather input
+      let ix = touch.vx, iz = touch.vz;
+      if (keys.KeyW || keys.ArrowUp) iz -= 1;
+      if (keys.KeyS || keys.ArrowDown) iz += 1;
+      if (keys.KeyA || keys.ArrowLeft) ix -= 1;
+      if (keys.KeyD || keys.ArrowRight) ix += 1;
+      if (keys.Space) { if (player.grounded) { player.vy = player.cfg.jump; boing(); } }
+      const run = keys.ShiftLeft || keys.ShiftRight || touch.run;
+      // rotate input by camera yaw (forward = away from camera)
+      const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
+      const dx = ix * cos + iz * sin;
+      const dz = -ix * sin + iz * cos;
+      let spd = player.cfg.speed * (run ? 1.55 : 1);
+      if (player.buffT > 0) spd *= 1.3;            // snack power
+      if (family[5].riding > 0) spd *= 0.9;        // carrying Faylen
+      const fallSpd = player.vy;                 // capture before swim zeroes it
+      const wasSwimming = player.swimming;
+      moveChar(player, dx, dz, dt, spd);
+      player.swimming = applySwim(player);
+      if (player.swimming && !wasSwimming && fallSpd < -5) { award('plunge'); throwConfetti(player.pos); } // cannonball
+      if (Math.hypot(player.pos.x - henryCowell.fremont.x, player.pos.z - henryCowell.fremont.z) < 1.8) award('fremont');
+    }
     for (const ch of family) if (ch !== player) updateAI(ch, dt);
-    updateActivities(dt, now);
-    updateMission(dt);
-    randomQuips(dt);
-    dadJokes(dt);
+    if (!photo.on && !car.occupied && !RIDE.riding) {
+      updateActivities(dt, now);
+      updateMission(dt);
+      randomQuips(dt);
+      dadJokes(dt);
+    } else {
+      updateInteractions();
+    }
   }
+  updateNightFX(dt, now);
   updateSquirrel(dt);
   updateTrain(dt);
   updateAmbience(dt, now);
@@ -2952,6 +3491,7 @@ requestAnimationFrame(frame);
 
 // tiny hook for automated tests
 window.__test = { setCam(y, p, d) { camYaw = y; camPitch = p; camDist = d; }, switchTo, family };
+window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, photo: () => photo.on, riding: () => RIDE.riding };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
