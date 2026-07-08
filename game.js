@@ -1320,8 +1320,38 @@ function updateAmbience(dt, now) {
 // ---------- Drop-in photo-real assets (see assets/README.md) ----------
 // Any file found in /assets upgrades the world on load; missing files = keep the procedural look.
 (function assetUpgrades() {
+  // Visible loading indicator, counted by files-settled rather than bytes: browsers' built-in
+  // TextureLoader/ImageLoader don't reliably fire byte-progress events, so a percentage bar
+  // would often be wrong or stuck. A simple "N of M checked" count is honest and always correct.
+  const loadEl = document.getElementById('assetload');
+  const pctEl = document.getElementById('assetloadpct');
+  const pending = {}; // file -> done(bool)
+  let anyLoaded = false, showTimer = null, hidden = true;
+  function total() { return Object.keys(pending).length; }
+  function doneCount() { return Object.values(pending).filter(Boolean).length; }
+  function refreshBadge() {
+    const d = doneCount(), t = total();
+    pctEl.textContent = d + '/' + t;
+    if (d >= t) { // everything attempted has settled
+      if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+      if (anyLoaded && !hidden) setTimeout(() => { loadEl.style.display = 'none'; hidden = true; }, 500);
+      else { loadEl.style.display = 'none'; hidden = true; }
+      return;
+    }
+    pctEl.textContent = d + '/' + t;
+    // delay showing briefly so a project with zero real assets (instant 404s) never flashes this
+    if (!showTimer && hidden) showTimer = setTimeout(() => { loadEl.style.display = 'block'; hidden = false; }, 400);
+  }
+  function track(file) { pending[file] = false; refreshBadge(); }
+  function onProgress() { return () => {}; } // kept as a no-op hook; loaders below still pass it
+  function markDone(file, ok) {
+    pending[file] = true;
+    if (ok) anyLoaded = true;
+    refreshBadge();
+  }
   const TL = new THREE.TextureLoader();
   function tryTex(file, rx, ry2, srgb, apply) {
+    track(file);
     TL.load('assets/' + file, t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(rx, ry2);
@@ -1329,7 +1359,8 @@ function updateAmbience(dt, now) {
       t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
       apply(t);
       toast('📸 Photo upgrade loaded: ' + file, 2.5);
-    }, undefined, () => {});
+      markDone(file, true);
+    }, onProgress(file), () => markDone(file, false));
   }
   tryTex('ground_diff.jpg', 70, 70, true, t => {
     ground.material.map = t; ground.material.bumpMap = null; ground.material.needsUpdate = true;
@@ -1340,6 +1371,7 @@ function updateAmbience(dt, now) {
   tryTex('bark_nor.jpg', 2, 5, false, t => { trunkMat.normalMap = t; trunkMat.needsUpdate = true; });
   // real captured sky -> real lighting on every surface
   if (THREE.RGBELoader) {
+    track('env.hdr');
     new THREE.RGBELoader().load('assets/env.hdr', hdr => {
       try {
         hdr.mapping = THREE.EquirectangularReflectionMapping;
@@ -1348,8 +1380,9 @@ function updateAmbience(dt, now) {
         pm.dispose();
         hdr.dispose();
         toast('📸 Real sky lighting loaded (env.hdr)', 2.5);
-      } catch (e) {}
-    }, undefined, () => {});
+        markDone('env.hdr', true);
+      } catch (e) { markDone('env.hdr', false); }
+    }, onProgress('env.hdr'), () => markDone('env.hdr', false));
   }
   // scanned models replace the procedural redwoods / rocks, instanced for one draw call per mesh
   function prepMaterial(m2) {
@@ -1389,14 +1422,18 @@ function updateAmbience(dt, now) {
   }
   if (THREE.GLTFLoader) {
     // accepts either a single .glb OR an unzipped Sketchfab folder (scene.gltf + textures)
-    function tryModel(paths, onScene) {
+    function tryModel(label, paths, onScene) {
+      track(label);
       const GL = new THREE.GLTFLoader();
       (function attempt(i) {
-        if (i >= paths.length) return;
-        GL.load(paths[i], g => { try { onScene(g.scene, paths[i]); } catch (e) {} }, undefined, () => attempt(i + 1));
+        if (i >= paths.length) { markDone(label, false); return; }
+        GL.load(paths[i], g => {
+          try { onScene(g.scene, paths[i]); markDone(label, true); }
+          catch (e) { markDone(label, false); }
+        }, onProgress(label), () => attempt(i + 1));
       })(0);
     }
-    tryModel(['assets/tree.glb', 'assets/tree/scene.gltf', 'assets/tree/scene.glb'], (sc, path) => {
+    tryModel('tree.glb', ['assets/tree.glb', 'assets/tree/scene.gltf', 'assets/tree/scene.glb'], (sc, path) => {
       const ok = instSwap(sc, treeReg,
         (t, size) => (17 * t.s) / size.y,        // match each redwood's original height
         () => {
@@ -1405,7 +1442,7 @@ function updateAmbience(dt, now) {
         });
       if (ok) toast('📸 Real trees loaded (' + path.replace('assets/', '') + ')', 3);
     });
-    tryModel(['assets/rock.glb', 'assets/rock/scene.gltf', 'assets/rock/scene.glb'], (sc, path) => {
+    tryModel('rock.glb', ['assets/rock.glb', 'assets/rock/scene.gltf', 'assets/rock/scene.glb'], (sc, path) => {
       const ok = instSwap(sc, rockReg,
         (t, size) => (t.r * 2.2) / Math.max(size.x, size.z, 0.0001),
         () => { for (const t of rockReg) scene.remove(t.m); });
