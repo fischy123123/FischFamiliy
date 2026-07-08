@@ -4,6 +4,26 @@ A 3D browser game starring the Fisch family at their house in the redwoods of
 Felton, California. One house in the forest. Six Fisches. Zero chance of peace
 and quiet.
 
+## ✨ Act I — Felton After Dark
+
+- **Living day/night cycle** — the sun arcs and sets behind the ridge; real
+  night brings a starry sky and Milky Way, glowing windows, a warm porch light,
+  twinkling RV-resort string lights, a flashlight in the dark, and fireflies
+  drifting over the yard. Tap **🌗** (or press **T**) to cycle the time of day.
+- **Drive the Mini** — walk up to the car, tap **🚗 Drive**, and cruise River
+  Ln with working headlights at night. Tap **🚪** to hop out.
+- **Cross into Henry Cowell** — over the covered bridge and the train crossing
+  lies the hollow **Fremont Tree** you can step inside, and the **Garden of
+  Eden swimming hole** with a **jump rock** to cannonball off.
+- **Ride the Roaring Camp train** — flag it at the platform, climb aboard, and
+  pull the whistle as it loops the forest.
+- **Real-calendar magic** — the game knows today's date. Birthdays decorate the
+  yard with balloons, a banner and a cake; December lights the eaves; late
+  October brings jack-o'-lanterns; every other day counts down to the next
+  Fisch birthday.
+- **Photo Mode** — tap **📷** (or **P**), frame the shot, and **📸 Capture**
+  saves a PNG to your device.
+
 ## Play it
 
 Open `index.html` in any modern browser — **works great on phones** (touch
