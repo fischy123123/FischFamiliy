@@ -15,7 +15,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.7;
+renderer.toneMappingExposure = 1.0; // tuned for sRGB-decoded surface textures
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc7e8);
@@ -23,8 +23,13 @@ scene.fog = new THREE.Fog(0xb5c8b2, 60, 240); // valley haze
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
 
-// cinematic post pipeline: real bloom + film grade on the GPU (graceful fallback)
-let composer = null;
+// cinematic post pipeline: real bloom + film grade + FXAA on the GPU (graceful fallback)
+let composer = null, bloomPass = null, fxaaPass = null;
+function fitFXAA() {
+  if (!fxaaPass) return;
+  const pr = Math.min(window.devicePixelRatio || 1, 1.75);
+  fxaaPass.uniforms.resolution.value.set(1 / (window.innerWidth * pr), 1 / (window.innerHeight * pr));
+}
 (function postFX() {
   if (!THREE.EffectComposer || !THREE.UnrealBloomPass || !THREE.ShaderPass) return;
   composer = new THREE.EffectComposer(renderer);
@@ -32,6 +37,7 @@ let composer = null;
   composer.addPass(new THREE.RenderPass(scene, camera));
   const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.55, 0.8);
   composer.addPass(bloom);
+  bloomPass = bloom;
   const grade = new THREE.ShaderPass({
     uniforms: { tDiffuse: { value: null } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -51,6 +57,13 @@ let composer = null;
     ].join('\n'),
   });
   composer.addPass(grade);
+  // composer renders to offscreen targets, so the canvas's MSAA never applies —
+  // FXAA as the final pass brings antialiasing back
+  if (THREE.FXAAShader) {
+    fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+    composer.addPass(fxaaPass);
+    fitFXAA();
+  }
 })();
 
 // Lights — dappled forest afternoon
@@ -94,6 +107,7 @@ function canvasTex(w, h, draw, rx, ry) {
   cv.width = w; cv.height = h;
   draw(cv.getContext('2d'), w, h);
   const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding; // painted colors are sRGB — without this every surface washes out pale
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   if (rx) tex.repeat.set(rx, ry || rx);
   return tex;
@@ -1878,6 +1892,15 @@ let player = null; // set at intro
 
 // ---------- Movement ----------
 const GRAV = -22;
+// walkable raised surfaces (jump rock etc.) — you land on them only from above
+const PLATFORMS = []; // {x, z, r, y}
+function groundYAt(ch) {
+  let gy = 0;
+  for (const p of PLATFORMS) {
+    if (ch.pos.y >= p.y - 0.3 && Math.hypot(ch.pos.x - p.x, ch.pos.z - p.z) < p.r) gy = Math.max(gy, p.y);
+  }
+  return gy;
+}
 function moveChar(ch, dx, dz, dt, speed) {
   const len = Math.hypot(dx, dz);
   ch.moving = len > 0.01;
@@ -1892,7 +1915,8 @@ function moveChar(ch, dx, dz, dt, speed) {
   // gravity / jump
   ch.vy += GRAV * dt;
   ch.pos.y += ch.vy * dt;
-  if (ch.pos.y <= 0) { ch.pos.y = 0; ch.vy = 0; ch.grounded = true; }
+  const gy = groundYAt(ch);
+  if (ch.pos.y <= gy) { ch.pos.y = gy; ch.vy = 0; ch.grounded = true; }
   else ch.grounded = false;
   // animate limbs
   const swing = ch.moving ? Math.sin(ch.walkT) * 0.7 : 0;
@@ -2258,6 +2282,7 @@ const ACH_LIST = {
 };
 const ach = { unlocked: {}, bounceStreak: 0, hifived: {} };
 function achCount() { return Object.keys(ach.unlocked).length; }
+document.getElementById('achv').textContent = '🏆 0/' + Object.keys(ACH_LIST).length;
 function award(id) {
   if (ach.unlocked[id]) return;
   ach.unlocked[id] = true;
@@ -2505,6 +2530,16 @@ function highFive(target) {
   if (Object.keys(ach.hifived).length >= 5) award('family');
 }
 let raceState = null;
+// set Faylen down gently (called before driving/train/zip/fishing so she doesn't hang in mid-air)
+function dropFaylen() {
+  const fay = family[5];
+  if (fay.riding > 0) {
+    fay.riding = 0;
+    fay.pos.y = 0;
+    fay.parts.lArm.rotation.x = 0; fay.parts.rArm.rotation.x = 0;
+    say(fay, 'Down now? Okay!', 2);
+  }
+}
 const SPECIALS = {
   eric: { label: '📢 Dad joke', fn(t) { say(t, '📢 ' + DAD_JOKES[Math.floor(rand(0, DAD_JOKES.length))], 4.5); setTimeout(() => say(player, 'DAAAD. 🙄', 2), 2300); } },
   jessy: { label: '🍎 Ask for snack', fn(t) { say(t, 'Here. Eat. You look like you’re about to do something reckless.', 3); player.buffT = 20; toast('🍎 SNACK POWER! +30% speed for 20s', 3); blip(); } },
@@ -2549,6 +2584,9 @@ const objectActions = [
   { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x + 8, p.z + 17.6) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
   { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 23 && p.z < 27.4, fn() { skipStone(); } },
+  { key: 'jumprock', label: '🧗 Climb the jump rock',
+    near: p => henryCowell.jumpRock && p.y < 1.5 && Math.hypot(p.x - henryCowell.jumpRock.x, p.z - henryCowell.jumpRock.z) < 3.4,
+    fn() { const jr = henryCowell.jumpRock; player.pos.set(jr.x, jr.top, jr.z); player.vy = 0; blip(); toast('🪨 Top of the jump rock! Walk off toward the water… CANNONBALL! 💦', 3.5); } },
   { key: 'squirrel', label: '🐿️ Pet squirrel', near: p => squirrel.g.position.distanceTo(p) < 2, fn() { squirrel.timer = 0; squirrel.target = clearSpot(30, 45, 0.5); toast('🐿️ The squirrel respectfully declines your friendship.', 3); award('squirrel'); } },
 ];
 const actionsEl = document.getElementById('actions');
@@ -2569,10 +2607,12 @@ function setActions(key, list) {
   });
 }
 window.addEventListener('keydown', e => {
+  if (photo.on) return; // hotkeys are gameplay — photo mode is for framing
   const idx = { KeyE: 0, KeyF: 1, KeyG: 2 }[e.code];
   if (idx !== undefined && currentActions[idx]) { currentActions[idx].fn(currentActions[idx].target); currentKey = ''; }
 });
 function updateInteractions() {
+  if (photo.on) { setActions('photo', []); return; } // no ghost buttons while framing a shot
   // vehicle / train states take priority
   if (car.occupied) { setActions('driving', [{ label: '🚪 Get out', fn: exitCar }]); return; }
   if (RIDE.riding) { setActions('riding', [{ label: '📣 Whistle', fn: trainWhistle }, { label: '🚪 Hop off', fn: hopOffTrain }]); return; }
@@ -2593,6 +2633,7 @@ function updateInteractions() {
   if (ACT2.zip.riding) { setActions('ziphold', []); return; }
   if (ACT2.zip.atTop) { setActions('ziptop', [{ label: '🚀 Zip!', fn: rideZip }, { label: '🪜 Climb down', fn: climbDown }]); return; }
   if (ACT2.fishing.active) { setActions('fishhold', []); return; } // fishing bar handles it
+  if (ACT2.trial.active) { setActions('trialrun', [{ label: '🏳️ Quit trial', fn: () => endTrial(false) }]); return; }
   if (player) {
     if (Math.hypot(player.pos.x - ACT2.dock.x, player.pos.z - (ACT2.dock.z + 2.5)) < 3) {
       setActions('dock', [{ label: '🎣 Fish', fn: startFishing }]); return;
@@ -2905,7 +2946,8 @@ function updateMission(dt) {
     return;
   }
   const done = mission.update(dt);
-  setHUD(mission.title, typeof mission.desc === 'function' ? mission.desc() : mission.desc, mission.prog());
+  if (!ACT2.trial.active) // during a time trial the HUD belongs to the stopwatch
+    setHUD(mission.title, typeof mission.desc === 'function' ? mission.desc() : mission.desc, mission.prog());
   if (done) {
     missionDone = true;
     doneTimer = 3.5;
@@ -2929,6 +2971,12 @@ const SWITCH_LINES = {
 function switchTo(i) {
   const ch = family[i];
   if (!ch || ch === player) return;
+  // mid-activity switching strands an invisible driver / remote-controls the rod — finish first
+  if (car.occupied || RIDE.riding || ACT2.zip.riding || ACT2.zip.atTop || ACT2.fishing.active) {
+    toast('🙅 Finish what you’re doing first! (hop out / climb down / reel in)', 2.5);
+    return;
+  }
+  if (family[5].riding > 0 && ch === family[5]) dropFaylen(); // can't piggyback yourself
   if (mission && mission.cleanup && player && player.carrying) mission.cleanup();
   if (player) player.flee = false;
   player = ch;
@@ -3033,7 +3081,9 @@ camera.lookAt(0, 2, -10);
   const step = new THREE.Mesh(new THREE.SphereGeometry(1, 7, 5), mat(0x6f6e64));
   step.scale.set(1.2, 0.7, 1.2); step.position.set(PX - PR - 2.6, 0.5, PZ + 1.2); step.castShadow = true; scene.add(step);
   henryCowell.jumpRock = { x: PX - PR - 1.2, z: PZ, top: 2.9 };
-  addCircleCollider(PX - PR - 2.6, PZ + 1.2, 0.9);
+  // both boulders are climbable: the low step, then the jump rock proper
+  PLATFORMS.push({ x: PX - PR - 2.6, z: PZ + 1.2, r: 1.15, y: 0.85 });
+  PLATFORMS.push({ x: PX - PR - 1.2, z: PZ, r: 1.5, y: 2.9 });
   // a couple of trailhead logs to sit on
   for (const [lx, lz, lr] of [[8, 44, 0.5], [24, 46, 0.4]]) {
     const log = cyl(lr, lr, 3, 0x5f4230, lx, lr, lz, null, 8);
@@ -3141,7 +3191,7 @@ function updateDayNight(dt, now) {
   const horizon = Math.max(0, 1 - Math.abs(sunH) * 3); // orange near sunrise/sunset
   sun.color.setRGB(1, 0.85 - horizon * 0.25 + dF * 0.05, 0.62 + dF * 0.28 - horizon * 0.2);
   sun.intensity = 0.05 + dF * 1.55;
-  hemi.intensity = 0.16 + dF * 0.62;             // higher fill so shaded faces aren't black
+  hemi.intensity = 0.2 + dF * 0.72;              // higher fill so shaded faces aren't black
   hemi.color.setRGB(0.1 + dF * 0.52, 0.16 + dF * 0.6, 0.28 + dF * 0.62);
   hemi.groundColor.setRGB(0.05 + dF * 0.1, 0.08 + dF * 0.14, 0.05 + dF * 0.08);
   // sky dome + fog
@@ -3169,7 +3219,8 @@ function updateDayNight(dt, now) {
     if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF); }
     else { const tw = 0.6 + Math.sin(now * 0.006 + (b.twinkle || 0)) * 0.4; b.m.emissive.setHex(b.base); b.m.emissive.multiplyScalar(0.3 + nF * tw); }
   }
-  renderer.toneMappingExposure = 0.7 + nF * 0.28; // lift a touch so night is moody, not black
+  renderer.toneMappingExposure = 1.0 + nF * 0.2; // lift a touch so night is moody, not black
+  if (bloomPass) bloomPass.strength = 0.22 + nF * 0.33; // lamps, windows and fire glow at night
 }
 
 // ---- Flashlight + fireflies motion (called each frame) ----
@@ -3205,6 +3256,7 @@ function updateNightFX(dt, now) {
 // ---- Driving the Mini ----
 function enterCar() {
   if (!player || car.occupied) return;
+  dropFaylen();
   car.occupied = true;
   car.heading = car.g.rotation.y;
   colliders[car.colliderIndex].disabled = true;
@@ -3217,7 +3269,12 @@ function exitCar() {
   if (!car.occupied) return;
   car.occupied = false;
   car.speed = 0;
-  colliders[car.colliderIndex].disabled = false;
+  car.headlight.intensity = 0;
+  // re-park the collider around wherever the car actually is now
+  const cc = colliders[car.colliderIndex];
+  cc.minX = car.g.position.x - 1.9; cc.maxX = car.g.position.x + 1.9;
+  cc.minZ = car.g.position.z - 1.9; cc.maxZ = car.g.position.z + 1.9;
+  cc.disabled = false;
   player.group.visible = true;
   // step out beside the driver door
   player.pos.set(car.g.position.x - Math.cos(car.heading) * 2.2, 0, car.g.position.z + Math.sin(car.heading) * 2.2);
@@ -3279,6 +3336,7 @@ function applySwim(ch) {
 // ---- Riding the Roaring Camp train ----
 function boardTrain() {
   if (RIDE.riding || !player) return;
+  dropFaylen();
   RIDE.riding = true;
   player.group.visible = false;
   // launch the train from the west heading east
@@ -3292,7 +3350,13 @@ function hopOffTrain() {
   if (!RIDE.riding) return;
   RIDE.riding = false;
   player.group.visible = true;
-  player.pos.set(trainPlatform.pos.x, 0, trainPlatform.pos.z + 2);
+  // step down beside the train wherever it is (fall back to the platform once it's gone)
+  if (train.phase === 'run' && Math.abs(train.g.position.x) < 85) {
+    player.pos.set(train.g.position.x, 0, 39.9);
+    collide(player.pos, 0.45);
+  } else {
+    player.pos.set(trainPlatform.pos.x, 0, trainPlatform.pos.z + 2);
+  }
 }
 function updateRiding(dt) {
   // seat the player on the open excursion car (local +x ~4.9 from the loco)
@@ -3374,7 +3438,9 @@ flashEl.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;pointe
 document.body.appendChild(flashEl);
 function togglePhoto() {
   photo.on = !photo.on;
-  document.getElementById('hud').style.opacity = photo.on ? '0' : '1';
+  const hud = document.getElementById('hud');
+  hud.style.opacity = photo.on ? '0' : '1';
+  hud.style.pointerEvents = photo.on ? 'none' : 'auto'; // faded HUD must not eat taps
   document.getElementById('bubbles').style.display = photo.on ? 'none' : 'block';
   document.getElementById('photobar').style.display = photo.on ? 'flex' : 'none';
   if (photo.on) toast('📷 Photo Mode — drag to aim, tap 📸 to capture', 3);
@@ -3459,7 +3525,7 @@ try { ACT2.trial.best = JSON.parse(localStorage.getItem('fisch_trial_best') || '
   const walk = box(30, 0.12, 3, 0x6b4a30, -64, 0.09, 15.5);
   walk.material = boardMat;
   function shop(cx, w, h, color, name, awning) {
-    const g = new THREE.Group(); g.position.set(cx, 0, 19); scene.add(g);
+    const g = new THREE.Group(); g.position.set(cx, 0, 19); g.rotation.y = Math.PI; scene.add(g); // storefronts face the boardwalk + lane
     const body = box(w, h, 7, color, 0, h / 2, 0, g); body.material = shopMat; body.material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
     // false-front parapet (old-timey main street)
     box(w + 0.4, 1.1, 0.4, color, 0, h + 0.4, 3.3, g).material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
@@ -3559,6 +3625,7 @@ try { ACT2.trial.best = JSON.parse(localStorage.getItem('fisch_trial_best') || '
 // ---- Fishing ----
 function startFishing() {
   if (ACT2.fishing.active) return;
+  dropFaylen();
   ACT2.fishing.active = true; ACT2.fishing.phase = 'idle';
   document.getElementById('fishbar').style.display = 'flex';
   fishStatus('🎣 Tap CAST to drop your line');
@@ -3616,6 +3683,7 @@ function updateFishing(dt, now) {
 // ---- Zipline ----
 function climbZip() {
   if (!player || ACT2.zip.riding) return;
+  dropFaylen();
   ACT2.zip.atTop = true;
   player.pos.copy(ACT2.zip.start);
   toast('🚡 You’re up in the canopy! Tap 🚀 Zip! to fly', 3.5);
@@ -3657,6 +3725,7 @@ function endTrial(finished) {
   const tr = ACT2.trial;
   tr.active = false;
   tr.rings.forEach(r => r.m.visible = false);
+  if (!finished) toast('🏳️ Trial abandoned — the rings will wait.', 2.5);
   if (finished) {
     const id = player.cfg.id, prev = tr.best[id];
     const secs = tr.t;
@@ -3681,9 +3750,8 @@ function updateTrial(dt, now) {
     tr.cp++;
     if (tr.cp >= tr.rings.length) { endTrial(true); return; }
     tr.rings[tr.cp].m.material.color.setHex(0x7ee08a);
-    setHUD('🏁 Time Trial', 'Ring ' + tr.cp + ' / ' + tr.rings.length + '  ·  keep going!', '⏱️ ' + tr.t.toFixed(1) + 's');
   }
-  if (tr.active && Math.floor(now / 250) % 2 === 0) document.getElementById('mprog').textContent = '⏱️ ' + tr.t.toFixed(1) + 's';
+  setHUD('🏁 Time Trial', 'Ring ' + tr.cp + ' / ' + tr.rings.length + '  ·  keep going!', '⏱️ ' + tr.t.toFixed(1) + 's');
 }
 
 // ---- Weather ----
@@ -3718,9 +3786,11 @@ function updateWeather(dt, now) {
 
 function updateActII(dt, now) {
   updateWeather(dt, now);
-  updateFishing(dt, now);
+  if (!photo.on) { // photo mode freezes the clock on bites and stopwatches
+    updateFishing(dt, now);
+    updateTrial(dt, now);
+  }
   if (ACT2.zip.riding) updateZip(dt);
-  updateTrial(dt, now);
   // downtown visit achievement
   if (player && ACT2.downtownCenter && Math.hypot(player.pos.x - ACT2.downtownCenter.x, player.pos.z - ACT2.downtownCenter.z) < 14) award('downtown');
 }
@@ -3816,6 +3886,9 @@ function frame(now) {
   updateNightFX(dt, now);
   updateSquirrel(dt);
   updateTrain(dt);
+  // the San Lorenzo actually flows (texture drift + a light cross-ripple)
+  waterTex.offset.x -= dt * 0.05;
+  waterTex.offset.y = Math.sin(now * 0.0005) * 0.03;
   updateAmbience(dt, now);
   updateConfetti(dt);
   updateBubbles(dt);
@@ -3842,12 +3915,15 @@ requestAnimationFrame(frame);
 window.__test = { setCam(y, p, d) { camYaw = y; camPitch = p; camDist = d; }, switchTo, family };
 window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, photo: () => photo.on, riding: () => RIDE.riding,
   weather: () => ACT2.weather, fishing: () => ACT2.fishing.active, zip: () => ACT2.zip.riding, trial: () => ACT2.trial.active,
-  cycleWeather, startFishing, castLine, reelIn };
+  cycleWeather, startFishing, castLine, reelIn,
+  atTop: () => ACT2.zip.atTop, trialT: () => ACT2.trial.t, startTrial, endTrial, climbZip, rideZip, enterCar, exitCar,
+  carPos: () => car.g.position, carCollider: () => colliders[car.colliderIndex], fxaa: () => !!fxaaPass, boardTrain, hopOffTrain };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+  fitFXAA();
 });
 })();

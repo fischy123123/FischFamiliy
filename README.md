@@ -85,7 +85,7 @@ The world is full of stuff too: bounce on the in-ground trampoline, kick the
 soccer ball, skip stones on the San Lorenzo, make s'mores at the campfire,
 honk the Mini, check the mail, knock on the front door, chase the squirrel,
 spot the deer, and find **Greg the Golden Slug** hiding deep in the forest.
-There are 10 achievements to unlock.
+There are 23 achievements to unlock.
 
 ## Controls
 
