@@ -457,14 +457,14 @@ const lane = box(LANE.halfW * 2, 0.1, LANE.z1 - LANE.z0, 0x9a978c, LANE.x, 0.045
 lane.material = new THREE.MeshStandardMaterial({ map: crackedTex, bumpMap: crackedTex, bumpScale: 0.04, roughness: 1, metalness: 0 });
 lane.castShadow = false;
 // driveway pad from the garage east to the lane
-const drive = box(15.5, 0.08, 7.5, 0x4b4b50, 8.25, 0.05, -7.25);
+const drive = box(15.5, 0.08, 7.5, 0x4b4b50, 8.25, 0.05, -22.25);
 drive.material = asphaltMat;
 drive.castShadow = false;
-const walkway = box(2.2, 0.07, 5, 0xa08464, 2.3, 0.05, -14);
+const walkway = box(2.2, 0.07, 6.5, 0xa08464, 2.6, 0.05, -15.2);
 walkway.material = new THREE.MeshStandardMaterial({ map: paverTex, bumpMap: paverTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
 walkway.castShadow = false;
 // paver path to the front door
-for (let i = 0; i < 7; i++) box(0.8, 0.08, 1.1, 0x9a8f7d, 3.6 + i * 1.35, 0.06, -18.3 + Math.sin(i * 0.7) * 0.4);
+for (let i = 0; i < 7; i++) box(0.8, 0.08, 1.1, 0x9a8f7d, 3.6 + i * 1.35, 0.06, -10.3 + Math.sin(i * 0.7) * 0.4);
 // the San Lorenzo River (real layout: house → River Ln → RV resort → river → Henry Cowell)
 const water = new THREE.Mesh(new THREE.PlaneGeometry(180, 10), new THREE.MeshPhongMaterial({
   map: waterTex, transparent: true, opacity: 0.94,
@@ -808,14 +808,14 @@ function windowPane(parent, x, y, z, w, h) {
   box(w + 0.3, 0.1, 0.2, TRIM, x, y - h / 2 - 0.1, z + 0.03, parent); // sill
 }
 // Left: main house
-const houseL = gableHouse(-4, -22, 12, 9, 5.5, 3);
+const houseL = gableHouse(-4, -7, 12, 9, 5.5, 3);
 houseL.rotation.y = Math.PI / 2; // the house faces its street — River Ln, to the east
-windowPane(houseL, -0.5, 3.6, 4.62, 1.6, 1.8);
-windowPane(houseL, 3.6, 3.6, 4.62, 1.6, 1.8);
-windowPane(houseL, 1.5, 6.4, 4.62, 1.4, 1.2); // gable window
+windowPane(houseL, 0.5, 3.6, 4.62, 1.6, 1.8);
+windowPane(houseL, -3.6, 3.6, 4.62, 1.6, 1.8);
+windowPane(houseL, -1.5, 6.4, 4.62, 1.4, 1.2); // gable window
 // front door + porch + steps — the entry sits in the notch beside the garage, under the pergola
-box(1.4, 2.5, 0.15, DOORC, -4.2, 1.25, 4.58, houseL);
-box(0.25, 0.25, 0.25, 0xc9a227, -3.78, 1.25, 4.7, houseL); // doorknob... fancy
+box(1.4, 2.5, 0.15, DOORC, 4.2, 1.25, 4.58, houseL);
+box(0.25, 0.25, 0.25, 0xc9a227, 3.78, 1.25, 4.7, houseL); // doorknob... fancy
 // "110" house number plaque by the door
 (function houseNumber() {
   const cv = document.createElement('canvas'); cv.width = 96; cv.height = 48;
@@ -825,13 +825,13 @@ box(0.25, 0.25, 0.25, 0xc9a227, -3.78, 1.25, 4.7, houseL); // doorknob... fancy
   c.fillStyle = '#e8d9a0'; c.font = 'bold 30px Georgia'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText('110', 48, 26);
   const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.28), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
-  plaque.position.set(-2.6, 2.4, 4.59);
+  plaque.position.set(2.6, 2.4, 4.59);
   houseL.add(plaque);
 })();
 // oval glass inset in the front door (like the real door)
 const oval = new THREE.Mesh(new THREE.CircleGeometry(0.26, 16), glassMat);
 oval.scale.y = 1.5;
-oval.position.set(-4.2, 1.55, 4.68);
+oval.position.set(4.2, 1.55, 4.68);
 houseL.add(oval);
 // upper side deck on the left with dark railing (photo 1)
 const sideDeck = box(1.7, 0.12, 3.2, 0x6b4a30, -6.9, 3.3, 0.5, houseL);
@@ -840,27 +840,27 @@ for (let i = 0; i < 4; i++) box(0.07, 0.85, 0.07, 0x22201d, -7.68, 3.85, -0.9 + 
 box(0.06, 0.06, 3.1, 0x22201d, -7.68, 4.3, 0.5, houseL);
 box(0.12, 3.3, 0.12, 0x5a4534, -7.5, 1.65, -0.7, houseL);
 box(0.12, 3.3, 0.12, 0x5a4534, -7.5, 1.65, 1.7, houseL);
-const porch = box(4, 0.3, 2.2, 0x6b4a30, -3.5, 0.15, 5.6, houseL); // porch deck by the door
+const porch = box(4, 0.3, 2.2, 0x6b4a30, 3.5, 0.15, 5.6, houseL); // porch deck by the door
 porch.material = plankMat;
-const step = box(2, 0.2, 0.9, 0x6b4a30, -3.2, 0.05, 7.0, houseL); // step
+const step = box(2, 0.2, 0.9, 0x6b4a30, 3.2, 0.05, 7.0, houseL); // step
 step.material = plankMat;
 // dark porch railing (like the photos), gap at the steps
-for (const [rx, rz] of [[-5.35, 6.6], [-4.6, 6.6], [-1.7, 6.6], [-5.35, 5.1], [-1.7, 5.1]])
+for (const [rx, rz] of [[5.35, 6.6], [4.6, 6.6], [1.7, 6.6], [5.35, 5.1], [1.7, 5.1]])
   box(0.09, 0.85, 0.09, 0x2b2118, rx, 0.72, rz, houseL);
-box(1.0, 0.07, 0.07, 0x2b2118, -4.95, 1.12, 6.6, houseL);
-box(0.6, 0.07, 0.07, 0x2b2118, -1.7, 1.12, 6.25, houseL).rotation.y = Math.PI / 2;
+box(1.0, 0.07, 0.07, 0x2b2118, 4.95, 1.12, 6.6, houseL);
+box(0.6, 0.07, 0.07, 0x2b2118, 1.7, 1.12, 6.25, houseL).rotation.y = Math.PI / 2;
 // pergola / arbor over the entry (slatted trellis on two posts)
 (function pergola() {
-  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, -5.6, 1.55, pz, houseL);
-  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, -2.2, 1.55, pz, houseL);
-  box(0.18, 0.12, 2.6, 0x3d2b1e, -5.6, 3.16, 5.9, houseL);
-  box(0.18, 0.12, 2.6, 0x3d2b1e, -2.2, 3.16, 5.9, houseL);
-  for (let i = 0; i < 6; i++) box(4.1, 0.07, 0.22, 0x3d2b1e, -3.9, 3.3, 4.75 + i * 0.46, houseL);
+  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, 5.6, 1.55, pz, houseL);
+  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, 2.2, 1.55, pz, houseL);
+  box(0.18, 0.12, 2.6, 0x3d2b1e, 5.6, 3.16, 5.9, houseL);
+  box(0.18, 0.12, 2.6, 0x3d2b1e, 2.2, 3.16, 5.9, houseL);
+  for (let i = 0; i < 6; i++) box(4.1, 0.07, 0.22, 0x3d2b1e, 3.9, 3.3, 4.75 + i * 0.46, houseL);
 })();
 // metal chimney
-cyl(0.25, 0.25, 2.2, 0x8f9499, -6, 9.2, -24, null, 10);
+cyl(0.25, 0.25, 2.2, 0x8f9499, -6, 9.2, -9, null, 10);
 // Right: garage with two doors
-const garage = gableHouse(-4, -7, 12, 9, 5, 2.6);
+const garage = gableHouse(-4, -22, 12, 9, 5, 2.6);
 garage.rotation.y = Math.PI / 2; // doors open east onto the driveway
 for (const gx of [-2.6, 2.6]) {
   const door = box(3.6, 3.1, 0.2, DOORC, gx, 1.55, 4.6, garage);
@@ -894,7 +894,7 @@ addBoxCollider(-8.2, 0.5, -16, -13);
 
 // White Mini in the driveway
 const car = (function miniCooper() {
-  const g = new THREE.Group(); g.position.set(7, 0, -7.5); g.rotation.y = 1.57; scene.add(g);
+  const g = new THREE.Group(); g.position.set(7, 0, -22.5); g.rotation.y = 1.57; scene.add(g);
   box(2, 0.75, 4, 0xf2f2f2, 0, 0.75, 0, g);
   box(1.7, 0.6, 2.2, 0x1a1a1a, 0, 1.4, -0.2, g);
   const wheels = [];
@@ -914,17 +914,17 @@ const car = (function miniCooper() {
   return { g, wheels, headlight: hl, heading: 1.57, speed: 0, occupied: false,
            colliderId: colliders.length };
 })();
-addBoxCollider(5.1, 8.9, -9.4, -5.6);
+addBoxCollider(5.1, 8.9, -24.4, -20.6);
 car.colliderIndex = colliders.length - 1; // removed while driving
 
 // Fence (right side, like the photos)
-for (let i = 0; i < 5; i++) box(0.15, 1.7, 1.9, 0x7a4f33, 15.4, 0.85, -1 + i * 2).material = plankMat;
-addBoxCollider(15.1, 15.7, -2, 8);
+for (let i = 0; i < 4; i++) box(0.15, 1.7, 1.9, 0x7a4f33, 15.4, 0.85, -33 + i * 2).material = plankMat;
+addBoxCollider(15.1, 15.7, -34, -26.2);
 
 // Mailbox at the end of the driveway
-box(0.12, 1.1, 0.12, 0x4a3a28, 14.9, 0.55, -12.6);
-box(0.5, 0.4, 0.7, 0x2e3134, 14.9, 1.3, -12.6);
-addCircleCollider(14.9, -12.6, 0.4);
+box(0.12, 1.1, 0.12, 0x4a3a28, 14.9, 0.55, -17);
+box(0.5, 0.4, 0.7, 0x2e3134, 14.9, 1.3, -17);
+addCircleCollider(14.9, -17, 0.4);
 
 // ---------- The rest of the neighborhood ----------
 (function neighborhood() {
@@ -952,7 +952,7 @@ addCircleCollider(14.9, -12.6, 0.4);
   // a service drop sagging from the mid pole across to the house eaves
   (function serviceDrop() {
     const p0 = new THREE.Vector3(23.6, 7.3, -13);
-    const p2 = new THREE.Vector3(0.5, 5.6, -20);
+    const p2 = new THREE.Vector3(0.5, 5.6, -10);
     const mid = p0.clone().add(p2).multiplyScalar(0.5); mid.y -= 1.6;
     scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, mid, p2), 14, 0.025, 4), wireM));
   })();
@@ -961,13 +961,13 @@ addCircleCollider(14.9, -12.6, 0.4);
     const t = i / 10;
     const st = new THREE.Mesh(new THREE.SphereGeometry(rand(0.3, 0.42), 7, 5), mat(0x8a8578));
     st.scale.set(1.15, 0.62, 0.8);
-    st.position.set(2.3 + Math.sin(t * 2.6) * 0.7, 0.16, -28.3 + t * 7);
+    st.position.set(2.3 + Math.sin(t * 2.6) * 0.7, 0.16, -6.6 + t * 5.2);
     st.rotation.y = rand(0, 9);
     st.castShadow = true; st.receiveShadow = true;
     scene.add(st);
   }
   // landscaping hugging the facade like the listing photos
-  for (const bz of [-27.6, -25.8, -24.2, -22.6, -13.0, -11.6, -2.8, -1.4]) {
+  for (const bz of [-8.0, -6.4, -4.4, -2.4, -1.2]) {
     const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.4, 0.68), 8, 6), mat(Math.random() < 0.4 ? 0x3d6030 : 0x2e4c26));
     b.position.set(1.5, 0.32, bz);
     b.castShadow = true;
@@ -1219,14 +1219,14 @@ for (let i = 0; i < 18; i++) {
   blobs.push({ x: p.x, z: p.z, r: 1.3 });
 }
 // front-yard trees like the photo
-for (const [x, z] of [[7.5, -23.5], [10.5, -27.5]]) {
+for (const [x, z] of [[7.5, -5.5], [10.5, -1.5]]) {
   const t = cyl(0.15, 0.22, 1.6, 0x6e4a30, x, 0.8, z);
   const c = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 7), mat(0x47632c));
   c.position.set(x, 2.4, z); c.castShadow = true; scene.add(c);
   addCircleCollider(x, z, 0.5);
   blobs.push({ x, z, r: 2 });
 }
-blobs.push({ x: 7, z: -7.5, r: 3 });                       // the Mini
+blobs.push({ x: 7, z: -22.5, r: 3 });                       // the Mini
 for (const [bx, bz] of [[26.5, 22.5], [34.5, 21.5], [42.5, 22.8]]) blobs.push({ x: bx, z: bz, r: 3.4 }); // RVs
 
 // ---------- Ambience: a living redwood forest ----------
@@ -1373,7 +1373,7 @@ for (let i = 0; i < 12; i++) {
   let n = 0;
   for (let i = 0; i < 5600 && n < 1500; i++) {
     const x = rand(-44, 44), z = rand(-31, 18);
-    if (x > 0 && x < 16.5 && z > -11.5 && z < -3) continue;    // driveway pad
+    if (x > 0 && x < 16.5 && z > -26.5 && z < -18) continue;    // driveway pad
     if (onRoad(x, z, 0.4)) continue;                           // lane + Hwy 9
     if (!spotIsClear(x, z, 0.2)) continue;
     dummy.position.set(x, 0, z);
@@ -1390,7 +1390,7 @@ for (let i = 0; i < 12; i++) {
 })();
 // porch planters + a warm lantern by the door
 (function porchLife() {
-  for (const px of [-5.2, -1.9]) {
+  for (const px of [5.2, 1.9]) {
     const pot = cyl(0.22, 0.16, 0.3, 0xa8653f, px, 0.45, 6.1, houseL, 10);
     const bush2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), mat(0x3d6030));
     bush2.castShadow = true;
@@ -1402,17 +1402,17 @@ for (let i = 0; i < 12; i++) {
       houseL.add(fl);
     }
   }
-  const lantern = box(0.16, 0.26, 0.12, 0x2b2118, -2.85, 2.5, 4.56, houseL);
+  const lantern = box(0.16, 0.26, 0.12, 0x2b2118, 2.85, 2.5, 4.56, houseL);
   const glowM = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
-  const glow = box(0.1, 0.16, 0.1, 0xffd28a, -2.85, 2.5, 4.58, houseL);
+  const glow = box(0.1, 0.16, 0.1, 0xffd28a, 2.85, 2.5, 4.58, houseL);
   glow.material = glowM;
   nightBulbMats.push({ m: glowM, base: 0xcc8a30 });
   // warm porch point light that switches on at dusk (world coords: houseL at -8,-23)
   porchLight = new THREE.PointLight(0xffce85, 0, 10, 1.6);
-  porchLight.position.set(0.9, 2.5, -18.2);
+  porchLight.position.set(0.9, 2.5, -11.4);
   scene.add(porchLight);
   // lit windows after dark — aligned to the actual window panes
-  for (const [wx, wy] of [[-0.5, 3.6], [3.6, 3.6], [1.5, 6.4]]) {
+  for (const [wx, wy] of [[0.5, 3.6], [-3.6, 3.6], [-1.5, 6.4]]) {
     const wm = new THREE.MeshLambertMaterial({ color: 0x3a4a55, emissive: 0x000000 });
     const w = box(1.3, 1.5, 0.05, 0x3a4a55, wx, wy, 4.7, houseL);
     w.material = wm;
@@ -2815,7 +2815,7 @@ function dropFaylen() {
 const SPECIALS = {
   eric: { label: '📢 Dad joke', fn(t) { say(t, '📢 ' + DAD_JOKES[Math.floor(rand(0, DAD_JOKES.length))], 4.5); setTimeout(() => say(player, 'DAAAD. 🙄', 2), 2300); } },
   jessy: { label: '🍎 Ask for snack', fn(t) { say(t, 'Here. Eat. You look like you’re about to do something reckless.', 3); player.buffT = 20; toast('🍎 SNACK POWER! +30% speed for 20s', 3); blip(); } },
-  liam: { label: '🏁 Race to mailbox', fn(t) { t.raceTarget = new THREE.Vector3(13.4, 0, -12.6); raceState = { racing: true, t: 0 }; toast('🏁 RACE! First one to the mailbox! GO GO GO!', 3); say(t, 'You’re about to get DUSTED.', 2.5); } },
+  liam: { label: '🏁 Race to mailbox', fn(t) { t.raceTarget = new THREE.Vector3(13.4, 0, -17); raceState = { racing: true, t: 0 }; toast('🏁 RACE! First one to the mailbox! GO GO GO!', 3); say(t, 'You’re about to get DUSTED.', 2.5); } },
   maddie: { label: '💃 Dance party', fn(t) { for (const f of family) if (f.pos.distanceTo(t.pos) < 9) f.danceT = 3; [523, 659, 784, 659, 523, 784].forEach((f2, i) => tone(f2, 0.15, 'triangle', 0.08, i * 0.14)); throwConfetti(t.pos); say(t, 'DANCE BREAK. It’s mandatory.', 2.5); score += 3; } },
   rowan: { label: '🏃 Play tag', fn(t) { t.fleeTag = 15; say(t, 'CAN’T CATCH ME, I HAD JUICE!', 2.5); toast('🏃 Rowan is IT-proof for 15s. Catch him!', 3); } },
   faylen: { label: '🎒 Piggyback', fn(t) { t.riding = 25; say(t, 'UPPY!!! 🥹', 2); toast('🎒 Faylen is aboard. Precious cargo mode: slightly slower.', 3); } },
@@ -2823,7 +2823,7 @@ const SPECIALS = {
 function updateRace(dt) {
   if (!raceState || !raceState.racing) return;
   const liam = family[2];
-  const mail = new THREE.Vector3(13.4, 0, -12.6);
+  const mail = new THREE.Vector3(13.4, 0, -17);
   const pd = player.pos.distanceTo(mail), ld = liam.pos.distanceTo(mail);
   if (pd < 1.9 || ld < 1.9) {
     raceState.racing = false;
@@ -2852,8 +2852,8 @@ const MAIL_LINES = [
   '📬 The neighbor’s mail. Again. Off to the RV resort with you.',
 ];
 const objectActions = [
-  { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 14.9, p.z + 12.6) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
-  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x - 1.5, p.z + 17.8) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
+  { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 14.9, p.z + 17) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
+  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x - 1.5, p.z + 11.2) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
   { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 23 && p.z < 27.4, fn() { skipStone(); } },
   { key: 'jumprock', label: '🧗 Climb the jump rock',
@@ -3104,7 +3104,7 @@ const MISSIONS = [
           k.tagged = true; k.flee = false; k.home = true; this.tagged++;
           score += 10; blip();
           say(k, ['Fiiiine. I’m hungry anyway.', 'You got lucky!!', 'Only because it’s pasta night!', 'Carry me!!'][Math.floor(rand(0, 4))], 3);
-          k.group.position.set(3.6, 0, -18.4 + rand(-1.6, 1.6)); // waiting by the porch
+          k.group.position.set(3.6, 0, -10.8 + rand(-1.6, 1.6)); // waiting by the porch
           k.pos.copy(k.group.position);
         }
       }
@@ -3118,7 +3118,7 @@ const MISSIONS = [
     init() {
       this.delivered = 0;
       this.parentsNeeding = new Set(['eric', 'jessy']);
-      for (const spot of [[1.7, -17.4], [1.7, -19.6]]) {
+      for (const spot of [[1.7, -9.8], [1.7, -11.9]]) {
         const g = new THREE.Group();
         cyl(0.16, 0.13, 0.24, 0xfdf6ec, 0, 0.12, 0, g, 10);
         const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.025, 6, 10), mat(0xfdf6ec));
@@ -3659,7 +3659,7 @@ function updateRiding(dt) {
   const todayBday = BIRTHDAYS.find(b => b.m === M && b.d === D);
   if (todayBday) {
     const colors = [0xff5a5a, 0x6bb8ff, 0xffd166, 0x7ee08a, 0xd9a3ff];
-    for (let i = 0; i < 8; i++) balloon(4 + (i % 2) * 1.4, -29 + i * 1.5, colors[i % 5]);
+    for (let i = 0; i < 8; i++) balloon(4.5 + (i % 2) * 1.4, -12.5 + i * 1.5, colors[i % 5]);
     // banner across the porch
     const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96;
     const c = cv.getContext('2d');
@@ -3667,7 +3667,7 @@ function updateRiding(dt) {
     c.fillStyle = '#fff'; c.font = 'bold 44px Trebuchet MS'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText('HAPPY BIRTHDAY ' + todayBday.name.toUpperCase() + '!', 256, 50);
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.3), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
-    banner.position.set(2, 5.6, -22); banner.rotation.y = Math.PI / 2; scene.add(banner);
+    banner.position.set(2, 5.6, -7); banner.rotation.y = Math.PI / 2; scene.add(banner);
     // cake on the picnic table
     const cake = cyl(0.5, 0.55, 0.4, 0xfff0e0, 30.5, 1.0, 19.2, null, 16);
     cyl(0.5, 0.5, 0.06, 0xffb3c8, 30.5, 1.25, 19.2, null, 16);
@@ -3678,15 +3678,15 @@ function updateRiding(dt) {
     for (let i = 0; i <= 14; i++) {
       const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: [0xd83a3a, 0x3ad86a, 0xffd166, 0x6bb8ff][i % 4] });
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), bm);
-      bulb.position.set(0.7, 5.4 - Math.sin(i / 14 * Math.PI) * 0.2, -28.2 + i * 0.83);
+      bulb.position.set(0.7, 5.4 - Math.sin(i / 14 * Math.PI) * 0.2, -13 + i * 0.86);
       scene.add(bulb); nightBulbMats.push({ m: bm, base: [0xd83a3a, 0x3ad86a, 0xffd166, 0x6bb8ff][i % 4], twinkle: i });
     }
     const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.14, 8, 16), mat(0x2f6a34));
-    wreath.position.set(0.95, 2.4, -17.8); wreath.rotation.y = Math.PI / 2; scene.add(wreath);
+    wreath.position.set(0.95, 2.4, -11.2); wreath.rotation.y = Math.PI / 2; scene.add(wreath);
     calendar.message = '🎄 Happy Holidays from Felton! The eaves are all lit up.';
   } else if (M === 10 && D >= 20) {
     // jack-o'-lanterns on the porch
-    for (const px of [-16.7, -20.3]) {
+    for (const px of [-8.7, -12.3]) {
       const pm = new THREE.MeshStandardMaterial({ color: 0xe8731f, emissive: 0x341300, roughness: 0.7 });
       const pk = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), pm);
       pk.scale.y = 0.82; pk.position.set(3.1, 0.5, px); scene.add(pk);
