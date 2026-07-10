@@ -457,11 +457,14 @@ const lane = box(LANE.halfW * 2, 0.1, LANE.z1 - LANE.z0, 0x9a978c, LANE.x, 0.045
 lane.material = new THREE.MeshStandardMaterial({ map: crackedTex, bumpMap: crackedTex, bumpScale: 0.04, roughness: 1, metalness: 0 });
 lane.castShadow = false;
 // driveway pad from the garage east to the lane
-const drive = box(15.5, 0.08, 7.5, 0xa08464, 8.25, 0.05, -7.25);
-drive.material = new THREE.MeshStandardMaterial({ map: paverTex, bumpMap: paverTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
+const drive = box(15.5, 0.08, 7.5, 0x4b4b50, 8.25, 0.05, -7.25);
+drive.material = asphaltMat;
 drive.castShadow = false;
+const walkway = box(2.2, 0.07, 5, 0xa08464, 2.3, 0.05, -14);
+walkway.material = new THREE.MeshStandardMaterial({ map: paverTex, bumpMap: paverTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
+walkway.castShadow = false;
 // paver path to the front door
-for (let i = 0; i < 7; i++) box(0.8, 0.08, 1.1, 0x9a8f7d, 3.4 + i * 1.35, 0.06, -22 + Math.sin(i * 0.7) * 0.4);
+for (let i = 0; i < 7; i++) box(0.8, 0.08, 1.1, 0x9a8f7d, 3.6 + i * 1.35, 0.06, -18.3 + Math.sin(i * 0.7) * 0.4);
 // the San Lorenzo River (real layout: house → River Ln → RV resort → river → Henry Cowell)
 const water = new THREE.Mesh(new THREE.PlaneGeometry(180, 10), new THREE.MeshPhongMaterial({
   map: waterTex, transparent: true, opacity: 0.94,
@@ -807,12 +810,12 @@ function windowPane(parent, x, y, z, w, h) {
 // Left: main house
 const houseL = gableHouse(-4, -22, 12, 9, 5.5, 3);
 houseL.rotation.y = Math.PI / 2; // the house faces its street — River Ln, to the east
-windowPane(houseL, -3, 3.6, 4.62, 1.6, 1.8);
-windowPane(houseL, 3, 3.6, 4.62, 1.6, 1.8);
-windowPane(houseL, 0, 6.4, 4.62, 1.4, 1.2); // gable window
-// front door + porch + steps
-box(1.4, 2.5, 0.15, DOORC, 0, 1.25, 4.58, houseL);
-box(0.25, 0.25, 0.25, 0xc9a227, 0.45, 1.25, 4.7, houseL); // doorknob... fancy
+windowPane(houseL, -0.5, 3.6, 4.62, 1.6, 1.8);
+windowPane(houseL, 3.6, 3.6, 4.62, 1.6, 1.8);
+windowPane(houseL, 1.5, 6.4, 4.62, 1.4, 1.2); // gable window
+// front door + porch + steps — the entry sits in the notch beside the garage, under the pergola
+box(1.4, 2.5, 0.15, DOORC, -4.2, 1.25, 4.58, houseL);
+box(0.25, 0.25, 0.25, 0xc9a227, -3.78, 1.25, 4.7, houseL); // doorknob... fancy
 // "110" house number plaque by the door
 (function houseNumber() {
   const cv = document.createElement('canvas'); cv.width = 96; cv.height = 48;
@@ -822,13 +825,13 @@ box(0.25, 0.25, 0.25, 0xc9a227, 0.45, 1.25, 4.7, houseL); // doorknob... fancy
   c.fillStyle = '#e8d9a0'; c.font = 'bold 30px Georgia'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText('110', 48, 26);
   const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.28), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
-  plaque.position.set(1.3, 2.4, 4.59);
+  plaque.position.set(-2.6, 2.4, 4.59);
   houseL.add(plaque);
 })();
 // oval glass inset in the front door (like the real door)
 const oval = new THREE.Mesh(new THREE.CircleGeometry(0.26, 16), glassMat);
 oval.scale.y = 1.5;
-oval.position.set(0, 1.55, 4.68);
+oval.position.set(-4.2, 1.55, 4.68);
 houseL.add(oval);
 // upper side deck on the left with dark railing (photo 1)
 const sideDeck = box(1.7, 0.12, 3.2, 0x6b4a30, -6.9, 3.3, 0.5, houseL);
@@ -837,10 +840,23 @@ for (let i = 0; i < 4; i++) box(0.07, 0.85, 0.07, 0x22201d, -7.68, 3.85, -0.9 + 
 box(0.06, 0.06, 3.1, 0x22201d, -7.68, 4.3, 0.5, houseL);
 box(0.12, 3.3, 0.12, 0x5a4534, -7.5, 1.65, -0.7, houseL);
 box(0.12, 3.3, 0.12, 0x5a4534, -7.5, 1.65, 1.7, houseL);
-const porch = box(4, 0.3, 2.2, 0x6b4a30, 0, 0.15, 5.6, houseL); // porch
+const porch = box(4, 0.3, 2.2, 0x6b4a30, -3.5, 0.15, 5.6, houseL); // porch deck by the door
 porch.material = plankMat;
-const step = box(3, 0.2, 0.9, 0x6b4a30, 0, 0.05, 7.0, houseL); // step
+const step = box(2, 0.2, 0.9, 0x6b4a30, -3.2, 0.05, 7.0, houseL); // step
 step.material = plankMat;
+// dark porch railing (like the photos), gap at the steps
+for (const [rx, rz] of [[-5.35, 6.6], [-4.6, 6.6], [-1.7, 6.6], [-5.35, 5.1], [-1.7, 5.1]])
+  box(0.09, 0.85, 0.09, 0x2b2118, rx, 0.72, rz, houseL);
+box(1.0, 0.07, 0.07, 0x2b2118, -4.95, 1.12, 6.6, houseL);
+box(0.6, 0.07, 0.07, 0x2b2118, -1.7, 1.12, 6.25, houseL).rotation.y = Math.PI / 2;
+// pergola / arbor over the entry (slatted trellis on two posts)
+(function pergola() {
+  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, -5.6, 1.55, pz, houseL);
+  for (const pz of [4.9, 6.9]) box(0.16, 3.1, 0.16, 0x3d2b1e, -2.2, 1.55, pz, houseL);
+  box(0.18, 0.12, 2.6, 0x3d2b1e, -5.6, 3.16, 5.9, houseL);
+  box(0.18, 0.12, 2.6, 0x3d2b1e, -2.2, 3.16, 5.9, houseL);
+  for (let i = 0; i < 6; i++) box(4.1, 0.07, 0.22, 0x3d2b1e, -3.9, 3.3, 4.75 + i * 0.46, houseL);
+})();
 // metal chimney
 cyl(0.25, 0.25, 2.2, 0x8f9499, -6, 9.2, -24, null, 10);
 // Right: garage with two doors
@@ -857,6 +873,14 @@ windowPane(garage, 2, 6, 4.62, 1.3, 1.4);
 for (const s of [-1, 1]) {
   const t = box(0.22, 3.4, 0.1, TRIM, s * 3.4, 6.1, 4.66, garage);
   t.rotation.z = s * 0.7;
+}
+// lantern sconces between and beside the garage doors
+for (const sx of [-5.4, 0, 5.4]) {
+  box(0.14, 0.24, 0.1, 0x2b2118, sx, 3.6, 4.66, garage);
+  const gm = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0x000000 });
+  const gg = box(0.09, 0.14, 0.09, 0xffd28a, sx, 3.58, 4.7, garage);
+  gg.material = gm;
+  nightBulbMats.push({ m: gm, base: 0xcc8a30 });
 }
 // Middle connector with the deck bridge (now spanning house → garage north-south)
 box(6.5, 4, 3.4, WALL, -4, 2, -14.5).material = sidingMat;
@@ -937,13 +961,13 @@ addCircleCollider(14.9, -12.6, 0.4);
     const t = i / 10;
     const st = new THREE.Mesh(new THREE.SphereGeometry(rand(0.3, 0.42), 7, 5), mat(0x8a8578));
     st.scale.set(1.15, 0.62, 0.8);
-    st.position.set(2.3 + Math.sin(t * 2.6) * 0.7, 0.16, -28.3 + t * 11);
+    st.position.set(2.3 + Math.sin(t * 2.6) * 0.7, 0.16, -28.3 + t * 7);
     st.rotation.y = rand(0, 9);
     st.castShadow = true; st.receiveShadow = true;
     scene.add(st);
   }
   // landscaping hugging the facade like the listing photos
-  for (const bz of [-27.6, -25.8, -24.2, -18.6, -17.0, -13.0, -2.8, -1.4]) {
+  for (const bz of [-27.6, -25.8, -24.2, -22.6, -13.0, -11.6, -2.8, -1.4]) {
     const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.4, 0.68), 8, 6), mat(Math.random() < 0.4 ? 0x3d6030 : 0x2e4c26));
     b.position.set(1.5, 0.32, bz);
     b.castShadow = true;
@@ -1195,7 +1219,7 @@ for (let i = 0; i < 18; i++) {
   blobs.push({ x: p.x, z: p.z, r: 1.3 });
 }
 // front-yard trees like the photo
-for (const [x, z] of [[7, -17], [10.5, -26]]) {
+for (const [x, z] of [[7.5, -23.5], [10.5, -27.5]]) {
   const t = cyl(0.15, 0.22, 1.6, 0x6e4a30, x, 0.8, z);
   const c = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 7), mat(0x47632c));
   c.position.set(x, 2.4, z); c.castShadow = true; scene.add(c);
@@ -1366,7 +1390,7 @@ for (let i = 0; i < 12; i++) {
 })();
 // porch planters + a warm lantern by the door
 (function porchLife() {
-  for (const px of [-1.7, 1.7]) {
+  for (const px of [-5.2, -1.9]) {
     const pot = cyl(0.22, 0.16, 0.3, 0xa8653f, px, 0.45, 6.1, houseL, 10);
     const bush2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), mat(0x3d6030));
     bush2.castShadow = true;
@@ -1378,19 +1402,19 @@ for (let i = 0; i < 12; i++) {
       houseL.add(fl);
     }
   }
-  const lantern = box(0.16, 0.26, 0.12, 0x2b2118, -1.1, 2.5, 4.56, houseL);
+  const lantern = box(0.16, 0.26, 0.12, 0x2b2118, -2.85, 2.5, 4.56, houseL);
   const glowM = new THREE.MeshLambertMaterial({ color: 0xffd28a, emissive: 0xcc8a30 });
-  const glow = box(0.1, 0.16, 0.1, 0xffd28a, -1.1, 2.5, 4.58, houseL);
+  const glow = box(0.1, 0.16, 0.1, 0xffd28a, -2.85, 2.5, 4.58, houseL);
   glow.material = glowM;
   nightBulbMats.push({ m: glowM, base: 0xcc8a30 });
   // warm porch point light that switches on at dusk (world coords: houseL at -8,-23)
   porchLight = new THREE.PointLight(0xffce85, 0, 10, 1.6);
-  porchLight.position.set(0.7, 2.5, -20.9);
+  porchLight.position.set(0.9, 2.5, -18.2);
   scene.add(porchLight);
-  // lit windows after dark
-  for (const [wx, wy] of [[-11, 3.6], [-5, 3.6], [5.2, 6]]) {
+  // lit windows after dark — aligned to the actual window panes
+  for (const [wx, wy] of [[-0.5, 3.6], [3.6, 3.6], [1.5, 6.4]]) {
     const wm = new THREE.MeshLambertMaterial({ color: 0x3a4a55, emissive: 0x000000 });
-    const w = box(1.5, 1.7, 0.05, 0x3a4a55, wx, wy, 4.66, houseL);
+    const w = box(1.3, 1.5, 0.05, 0x3a4a55, wx, wy, 4.7, houseL);
     w.material = wm;
     nightBulbMats.push({ m: wm, base: 0xffcf87, window: true });
   }
@@ -2829,7 +2853,7 @@ const MAIL_LINES = [
 ];
 const objectActions = [
   { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 14.9, p.z + 12.6) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
-  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x - 1.5, p.z + 22) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
+  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x - 1.5, p.z + 17.8) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
   { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 23 && p.z < 27.4, fn() { skipStone(); } },
   { key: 'jumprock', label: '🧗 Climb the jump rock',
@@ -3080,7 +3104,7 @@ const MISSIONS = [
           k.tagged = true; k.flee = false; k.home = true; this.tagged++;
           score += 10; blip();
           say(k, ['Fiiiine. I’m hungry anyway.', 'You got lucky!!', 'Only because it’s pasta night!', 'Carry me!!'][Math.floor(rand(0, 4))], 3);
-          k.group.position.set(3.4, 0, -22 + rand(-1.8, 1.8)); // waiting by the porch
+          k.group.position.set(3.6, 0, -18.4 + rand(-1.6, 1.6)); // waiting by the porch
           k.pos.copy(k.group.position);
         }
       }
@@ -3094,7 +3118,7 @@ const MISSIONS = [
     init() {
       this.delivered = 0;
       this.parentsNeeding = new Set(['eric', 'jessy']);
-      for (const spot of [[1.7, -20.4], [1.7, -23.6]]) {
+      for (const spot of [[1.7, -17.4], [1.7, -19.6]]) {
         const g = new THREE.Group();
         cyl(0.16, 0.13, 0.24, 0xfdf6ec, 0, 0.12, 0, g, 10);
         const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.025, 6, 10), mat(0xfdf6ec));
@@ -3658,14 +3682,14 @@ function updateRiding(dt) {
       scene.add(bulb); nightBulbMats.push({ m: bm, base: [0xd83a3a, 0x3ad86a, 0xffd166, 0x6bb8ff][i % 4], twinkle: i });
     }
     const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.14, 8, 16), mat(0x2f6a34));
-    wreath.position.set(1.1, 2.4, -21.9); wreath.rotation.y = Math.PI / 2; scene.add(wreath);
+    wreath.position.set(0.95, 2.4, -17.8); wreath.rotation.y = Math.PI / 2; scene.add(wreath);
     calendar.message = '🎄 Happy Holidays from Felton! The eaves are all lit up.';
   } else if (M === 10 && D >= 20) {
     // jack-o'-lanterns on the porch
-    for (const px of [-20.4, -23.6]) {
+    for (const px of [-16.7, -20.3]) {
       const pm = new THREE.MeshStandardMaterial({ color: 0xe8731f, emissive: 0x341300, roughness: 0.7 });
       const pk = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), pm);
-      pk.scale.y = 0.82; pk.position.set(2.2, 0.5, px); scene.add(pk);
+      pk.scale.y = 0.82; pk.position.set(3.1, 0.5, px); scene.add(pk);
       nightBulbMats.push({ m: pm, base: 0xff7a1a, twinkle: px });
     }
     calendar.message = '🎃 Spooky season in the redwoods! Pumpkins on the porch.';
