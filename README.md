@@ -68,7 +68,7 @@ Finish all five to complete a round — then it gets harder.
 
 ## 🗺️ Act II — Greater Felton
 
-- **Downtown Felton** west along the lane: a little main street (Felton Coffee, Felton Market, the Trading Post) with a boardwalk and street lamps that glow at night.
+- **Downtown Felton** along Hwy 9: a little main street (Felton Coffee, Felton Market, the Trading Post) with a boardwalk and street lamps that glow at night.
 - **Fishing** — a dock on the San Lorenzo; cast, wait for the bite, reel in trout, bass, the odd boot, or a bragging-rights steelhead.
 - **Canopy zipline** — climb a redwood platform and fly across the yard.
 - **Weather** — tap 🌦️ to roll in the marine-layer fog or bring rain over the redwoods.
@@ -100,12 +100,17 @@ There are 23 achievements to unlock.
 
 ## The world
 
-A compressed but geographically faithful Felton: your house on River Ln,
-the Santa Cruz Redwoods RV Resort across the lane, the San Lorenzo River
-behind it with a walkable Felton Covered Bridge (est. 1892), a Henry
-Cowell trailhead on the far bank, the Roaring Camp steam train passing
-through the redwoods beyond, and the Santa Cruz Mountains hazy on every
-horizon.
+A compressed but geographically faithful Felton, laid out from the real
+street view and aerial: **Hwy 9** runs east–west with occasional passing
+cars, and **River Ln** — a cracked, sun-bleached dead-end lane — runs
+north from the junction past the house (110, west side; the neighbor's
+cabin at 111 across the lane) and ends at the **San Lorenzo River**. The
+Santa Cruz Redwoods RV Resort sits east of the lane by the water, a
+walkable covered bridge crosses to the **Henry Cowell** trailhead on the
+far bank, the Roaring Camp steam train passes through the redwoods
+beyond, downtown Felton is up Hwy 9, and the Santa Cruz Mountains sit
+hazy on every horizon. Power lines sag along the lane, sword ferns crowd
+the forest floor, and sun shafts slant through the canopy.
 
 ## Make it photo-real (no coding needed)
 

@@ -187,6 +187,59 @@ const asphaltTex = canvasTex(256, 256, (c, w, h) => {
   }
   c.globalAlpha = 1;
 }, 5, 5);
+// River Ln itself: pale, sun-bleached, alligator-cracked pavement (straight from the street view)
+const crackedTex = canvasTex(256, 512, (c, w, h) => {
+  c.fillStyle = '#8d8a80'; c.fillRect(0, 0, w, h);
+  speckle(c, w, h, ['#9b988c', '#7e7b71', '#a6a396', '#6f6c63'], 900, 1.5, 6);
+  // dark repair patches
+  for (let i = 0; i < 7; i++) {
+    c.fillStyle = '#54565a'; c.globalAlpha = rand(0.35, 0.6);
+    c.beginPath();
+    c.ellipse(rand(0, w), rand(0, h), rand(14, 46), rand(10, 30), rand(0, 3), 0, 7);
+    c.fill();
+  }
+  c.globalAlpha = 1;
+  // alligator crack web
+  c.strokeStyle = '#57544b'; c.lineWidth = 1.6; c.globalAlpha = 0.8;
+  for (let i = 0; i < 90; i++) {
+    let x = rand(0, w), y = rand(0, h);
+    c.beginPath(); c.moveTo(x, y);
+    for (let s2 = 0; s2 < 4; s2++) { x += rand(-16, 16); y += rand(-16, 16); c.lineTo(x, y); }
+    c.stroke();
+  }
+  // long longitudinal cracks
+  c.lineWidth = 2; c.globalAlpha = 0.6; c.strokeStyle = '#5d5a50';
+  for (let i = 0; i < 5; i++) {
+    let x = rand(w * 0.15, w * 0.85), y = 0;
+    c.beginPath(); c.moveTo(x, y);
+    while (y < h) { x += rand(-10, 10); y += rand(24, 50); c.lineTo(x, y); }
+    c.stroke();
+  }
+  c.globalAlpha = 0.5; // redwood-needle debris drifting in from the shoulders
+  speckle(c, w * 0.14, h, ['#7a5c3a', '#5d452c'], 160, 0.6, 2.4);
+  c.save(); c.translate(w, 0); c.scale(-1, 1);
+  speckle(c, w * 0.14, h, ['#7a5c3a', '#5d452c'], 160, 0.6, 2.4);
+  c.restore();
+  c.globalAlpha = 1;
+}, 1, 8);
+// Hwy 9: darker two-lane blacktop with a dashed yellow centerline + white fog lines
+const hwyTex = canvasTex(256, 256, (c, w, h) => {
+  c.fillStyle = '#393b40'; c.fillRect(0, 0, w, h);
+  speckle(c, w, h, ['#46484e', '#2f3034', '#515358', '#26272b'], 1200, 0.5, 2.5);
+  c.strokeStyle = '#2c2d31'; c.globalAlpha = 0.6;
+  for (let i = 0; i < 6; i++) {
+    let x = rand(0, w), y = rand(0, h);
+    c.beginPath(); c.moveTo(x, y);
+    for (let s2 = 0; s2 < 4; s2++) { x += rand(-14, 14); y += rand(6, 18); c.lineTo(x, y); }
+    c.stroke();
+  }
+  c.globalAlpha = 0.9;
+  c.fillStyle = '#d8b23a'; c.fillRect(0, h / 2 - 4, w * 0.62, 3.4); // dashed double yellow
+  c.fillRect(0, h / 2 + 1, w * 0.62, 3.4);
+  c.fillStyle = '#cfd2d4'; // fog lines
+  c.fillRect(0, 14, w, 3); c.fillRect(0, h - 17, w, 3);
+  c.globalAlpha = 1;
+}, 16, 1);
 const plankTex = canvasTex(256, 128, (c, w, h) => {
   c.fillStyle = '#7a4f33'; c.fillRect(0, 0, w, h);
   for (let x = 0; x < w; x += 20) {
@@ -289,11 +342,20 @@ function spotIsClear(x, z, r) {
   }
   return true;
 }
+const HWY9 = { z: -44, halfW: 4.5 };                 // z -48.5 .. -39.5
+const LANE = { x: 18.5, halfW: 2.75, z0: -40, z1: 26.5 }; // x 15.75 .. 21.25
+function onRoad(x, z, pad) {
+  const p = pad || 0;
+  if (Math.abs(z - HWY9.z) < HWY9.halfW + p && Math.abs(x) < 78) return true;
+  if (Math.abs(x - LANE.x) < LANE.halfW + p && z > LANE.z0 - p && z < LANE.z1 + p) return true;
+  return false;
+}
 function clearSpot(minR, maxR, r) {
   for (let i = 0; i < 60; i++) {
     const a = rand(0, Math.PI * 2), d = rand(minR, maxR);
     const x = Math.sin(a) * d, z = Math.cos(a) * d - 5;
     if (z < -30) continue;
+    if (onRoad(x, z, r)) continue;
     if (spotIsClear(x, z, r)) return new THREE.Vector3(x, 0, z);
   }
   return new THREE.Vector3(rand(-20, 20), 0, rand(-2, 6));
@@ -362,21 +424,41 @@ scene.add(ground);
 // needle-duff patches under the trees
 const duffMat = new THREE.MeshLambertMaterial({ map: duffTex });
 for (let i = 0; i < 38; i++) {
-  const p = new THREE.Mesh(new THREE.CircleGeometry(rand(2, 7), 10), duffMat);
+  const duffR = rand(2, 7);
+  const p = new THREE.Mesh(new THREE.CircleGeometry(duffR, 10), duffMat);
   p.rotation.x = -Math.PI / 2;
   p.rotation.z = rand(0, 9);
-  p.position.set(rand(-80, 80), 0.02, rand(-80, 80));
+  let dx2 = rand(-80, 80), dz2 = rand(-80, 80);
+  if (onRoad(dx2, dz2, duffR)) { dx2 = rand(30, 70); dz2 = rand(-80, -58); }
+  p.position.set(dx2, 0.02, dz2);
   p.receiveShadow = true;
   scene.add(p);
 }
-// River Lane along the front
+// ---- Roads, laid out like the real place: Hwy 9 runs east-west to the south,
+// and River Ln is a short cracked dead-end lane running north from it, past the
+// house, ending at the San Lorenzo. (See the street view + aerial.)
+const paverTex = canvasTex(256, 256, (c, w, h) => {
+  c.fillStyle = '#8a7357'; c.fillRect(0, 0, w, h); // sand joints
+  let row = 0;
+  for (let y = 0; y < h; y += 24) {
+    for (let x = -24; x < w; x += 42) {
+      c.fillStyle = ['#a08464', '#93755a', '#ab8f6c', '#87694e'][Math.floor(rand(0, 4))];
+      c.fillRect(x + (row % 2) * 21 + 2, y + 2, 38, 20);
+    }
+    row++;
+  }
+  speckle(c, w, h, ['#6f5a42', '#b59a76'], 260, 1, 4);
+}, 4, 4);
 const asphaltMat = new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
-const road = box(140, 0.1, 7, 0x3c3c40, 0, 0.03, 13);
-road.material = asphaltMat;
-road.castShadow = false;
-// driveway from garage to road
-const drive = box(15, 0.1, 28, 0x4b4b50, 8, 0.04, -4);
-drive.material = asphaltMat;
+const hwy = box(152, 0.1, HWY9.halfW * 2, 0x3c3c40, 0, 0.03, HWY9.z);
+hwy.material = new THREE.MeshStandardMaterial({ map: hwyTex, bumpMap: asphaltTex, bumpScale: 0.02, roughness: 0.95, metalness: 0 });
+hwy.castShadow = false;
+const lane = box(LANE.halfW * 2, 0.1, LANE.z1 - LANE.z0, 0x9a978c, LANE.x, 0.045, (LANE.z0 + LANE.z1) / 2);
+lane.material = new THREE.MeshStandardMaterial({ map: crackedTex, bumpMap: crackedTex, bumpScale: 0.04, roughness: 1, metalness: 0 });
+lane.castShadow = false;
+// driveway pad from the garage east to the lane
+const drive = box(12, 0.08, 8, 0xa08464, 10, 0.05, -14.3);
+drive.material = new THREE.MeshStandardMaterial({ map: paverTex, bumpMap: paverTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
 drive.castShadow = false;
 // paver path to the front door
 for (let i = 0; i < 7; i++) box(1.1, 0.08, 0.8, 0x9a8f7d, -8 + Math.sin(i * 0.7) * 0.4, 0.06, -16.6 + i * 1.35);
@@ -462,10 +544,10 @@ addBoxCollider(24.4, 95, 27.5, 39);
 // Henry Cowell trailhead sign at the far end of the bridge (the park really is right there)
 woodSign(27, 39.9, Math.PI + 0.4, ['HENRY COWELL', 'REDWOODS', 'STATE PARK'], 3.4);
 // direction signpost at the bridge path
-(function signpost() {
-  const g = new THREE.Group(); g.position.set(18.4, 0, 17.6); g.rotation.y = -0.4; scene.add(g);
+(function signpost() { // fingerpost at the Hwy 9 / River Ln junction
+  const g = new THREE.Group(); g.position.set(24.3, 0, -37.6); g.rotation.y = -0.2; scene.add(g);
   cyl(0.07, 0.09, 3.1, 0x5a4534, 0, 1.55, 0, g, 8);
-  const entries = [['SANTA CRUZ 7', 1], ['ROARING CAMP 1', -1], ['DOWNTOWN FELTON ½', 1], ['HWY 9', -1]];
+  const entries = [['SANTA CRUZ 7', 1], ['DOWNTOWN FELTON ½', -1], ['ROARING CAMP 1', -1], ['SAN LORENZO RIVER', -1]];
   entries.forEach(([label, dir], i) => {
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 40;
     const c = cv.getContext('2d');
@@ -481,12 +563,47 @@ woodSign(27, 39.9, Math.PI + 0.4, ['HENRY COWELL', 'REDWOODS', 'STATE PARK'], 3.
       g.add(blade);
     }
   });
-  addCircleCollider(18.4, 17.6, 0.35);
+  addCircleCollider(24.3, -37.6, 0.35);
+})();
+// the lane really is a dead end — yellow END diamond where it meets the river
+(function deadEnd() {
+  cyl(0.05, 0.06, 2.4, 0x7a7d80, 15.6, 1.2, 24.6, null, 8);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 96;
+  const c = cv.getContext('2d');
+  c.translate(48, 48); c.rotate(Math.PI / 4);
+  c.fillStyle = '#e8c33a'; c.fillRect(-30, -30, 60, 60);
+  c.strokeStyle = '#1d1d1d'; c.lineWidth = 4; c.strokeRect(-27, -27, 54, 54);
+  c.rotate(-Math.PI / 4);
+  c.fillStyle = '#1d1d1d'; c.font = 'bold 22px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('END', 0, 1);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+  p.position.set(15.6, 2.05, 24.6); p.rotation.y = Math.PI; scene.add(p);
+  addCircleCollider(15.6, 24.6, 0.25);
+  // CA-9 route shields flanking the junction
+  function shield(x, z, ry) {
+    cyl(0.05, 0.06, 2.6, 0x7a7d80, x, 1.3, z, null, 8);
+    const sv = document.createElement('canvas'); sv.width = 96; sv.height = 110;
+    const s = sv.getContext('2d');
+    s.fillStyle = '#f2f2ee';
+    s.beginPath(); // CA miner's-spade shield, simplified
+    s.moveTo(10, 8); s.lineTo(86, 8); s.lineTo(86, 60); s.quadraticCurveTo(86, 96, 48, 106); s.quadraticCurveTo(10, 96, 10, 60); s.closePath(); s.fill();
+    s.strokeStyle = '#1d5c34'; s.lineWidth = 5; s.stroke();
+    s.fillStyle = '#1d5c34'; s.font = 'bold 15px Arial'; s.textAlign = 'center';
+    s.fillText('CALIFORNIA', 48, 26);
+    s.font = 'bold 48px Arial'; s.fillText('9', 48, 78);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.72),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sv), transparent: true }));
+    pl.position.set(x, 2.3, z); pl.rotation.y = ry; scene.add(pl);
+    addCircleCollider(x, z, 0.2);
+  }
+  shield(28, -38.6, 0.3);    // for westbound traffic
+  shield(-30, -49.4, Math.PI - 0.3); // for eastbound traffic
 })();
 
 // ---------- Santa Cruz Redwoods RV Resort (4980 Hwy 9 — right across the lane) ----------
 (function rvResort() {
-  const pad = box(27, 0.05, 9.5, 0xb9b4a6, 17, 0.03, 22);
+  const pad = box(27, 0.05, 9.5, 0xb9b4a6, 35, 0.03, 22);
   pad.castShadow = false;
   pad.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xcac2b0 });
   const plankMat = new THREE.MeshLambertMaterial({ map: plankTex });
@@ -509,27 +626,27 @@ woodSign(27, 39.9, Math.PI + 0.4, ['HENRY COWELL', 'REDWOODS', 'STATE PARK'], 3.
     }
     addCircleCollider(x, z, 3.0);
   }
-  rv(8.5, 22.5, 0.12, 0x8a4a32);
-  rv(16.5, 21.5, -0.08, 0x3f5a3a);
-  rv(24.5, 22.8, 0.2, 0x35507a);
+  rv(26.5, 22.5, 0.12, 0x8a4a32);
+  rv(34.5, 21.5, -0.08, 0x3f5a3a);
+  rv(42.5, 22.8, 0.2, 0x35507a);
   // picnic table
   (function () {
-    const g = new THREE.Group(); g.position.set(12.5, 0, 19.2); g.rotation.y = 0.4; scene.add(g);
+    const g = new THREE.Group(); g.position.set(30.5, 0, 19.2); g.rotation.y = 0.4; scene.add(g);
     box(1.8, 0.08, 0.8, 0x7a4f33, 0, 0.72, 0, g).material = plankMat;
     for (const s of [-1, 1]) {
       box(1.8, 0.06, 0.3, 0x7a4f33, 0, 0.45, s * 0.62, g).material = plankMat;
       box(0.1, 0.72, 0.9, 0x5e3a22, s * 0.7, 0.36, 0, g);
     }
-    addCircleCollider(12.5, 19.2, 1.1);
+    addCircleCollider(30.5, 19.2, 1.1);
   })();
   // string lights between two posts
-  cyl(0.06, 0.08, 2.6, 0x5a4534, 10, 1.3, 18.2, null, 6);
-  cyl(0.06, 0.08, 2.6, 0x5a4534, 20, 1.3, 18.2, null, 6);
+  cyl(0.06, 0.08, 2.6, 0x5a4534, 28, 1.3, 18.2, null, 6);
+  cyl(0.06, 0.08, 2.6, 0x5a4534, 38, 1.3, 18.2, null, 6);
   for (let i = 0; i <= 10; i++) {
     const t = i / 10;
     const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xc9a24a });
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), bm);
-    bulb.position.set(10 + t * 10, 2.5 - Math.sin(t * Math.PI) * 0.5, 18.2);
+    bulb.position.set(28 + t * 10, 2.5 - Math.sin(t * Math.PI) * 0.5, 18.2);
     scene.add(bulb);
     nightBulbMats.push({ m: bm, base: 0xc9a24a, twinkle: rand(0, 9) }); // twinkles after dark
   }
@@ -751,7 +868,7 @@ addBoxCollider(-2, 2, -26.3, -19.7);
 
 // White Mini in the driveway
 const car = (function miniCooper() {
-  const g = new THREE.Group(); g.position.set(-17, 0, -12); g.rotation.y = 0.4; scene.add(g);
+  const g = new THREE.Group(); g.position.set(9.5, 0, -14); g.rotation.y = 1.25; scene.add(g);
   box(2, 0.75, 4, 0xf2f2f2, 0, 0.75, 0, g);
   box(1.7, 0.6, 2.2, 0x1a1a1a, 0, 1.4, -0.2, g);
   const wheels = [];
@@ -768,43 +885,51 @@ const car = (function miniCooper() {
   hl.position.set(0, 0.9, 2.1);
   const hlTarget = new THREE.Object3D(); hlTarget.position.set(0, 0, 14); g.add(hlTarget);
   hl.target = hlTarget; g.add(hl);
-  return { g, wheels, headlight: hl, heading: 0.4, speed: 0, occupied: false,
+  return { g, wheels, headlight: hl, heading: 1.25, speed: 0, occupied: false,
            colliderId: colliders.length };
 })();
-addBoxCollider(-19, -15, -14.5, -9.5);
+addBoxCollider(7.6, 11.4, -15.9, -12.1);
 car.colliderIndex = colliders.length - 1; // removed while driving
 
 // Fence (right side, like the photos)
-for (let i = 0; i < 9; i++) box(0.15, 1.7, 1.9, 0x7a4f33, 15.5, 0.85, -18 + i * 2).material = plankMat;
-addBoxCollider(15.2, 15.8, -19, 0.5);
+for (let i = 0; i < 5; i++) box(0.15, 1.7, 1.9, 0x7a4f33, 15.4, 0.85, -8 + i * 2).material = plankMat;
+addBoxCollider(15.1, 15.7, -9, 1.2);
 
 // Mailbox at the end of the driveway
-box(0.12, 1.1, 0.12, 0x4a3a28, 3.5, 0.55, 8.5);
-box(0.5, 0.4, 0.7, 0x2e3134, 3.5, 1.3, 8.5);
-addCircleCollider(3.5, 8.5, 0.4);
+box(0.12, 1.1, 0.12, 0x4a3a28, 14.9, 0.55, -10.6);
+box(0.5, 0.4, 0.7, 0x2e3134, 14.9, 1.3, -10.6);
+addCircleCollider(14.9, -10.6, 0.4);
 
 // ---------- The rest of the neighborhood ----------
 (function neighborhood() {
   // power lines along River Ln (they're in every photo of the street)
   const poleM = new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 0.08, roughness: 1, metalness: 0 });
   const wireM = new THREE.MeshBasicMaterial({ color: 0x15140f });
-  const poleXs = [-46, 0, 46];
-  for (const px of poleXs) {
-    const pole = cyl(0.13, 0.17, 8.4, 0x4a3a2c, px, 4.2, 11.2, null, 8);
+  // poles march up the east side of River Ln, wires overhead (they're in the street view)
+  const poleZs = [-37, -13, 11];
+  for (const pz of poleZs) {
+    const pole = cyl(0.13, 0.17, 8.4, 0x4a3a2c, 23.6, 4.2, pz, null, 8);
     pole.material = poleM;
-    box(0.12, 0.14, 2.3, 0x3d2f22, px, 7.5, 11.2);
-    addCircleCollider(px, 11.2, 0.3);
+    box(2.3, 0.14, 0.12, 0x3d2f22, 23.6, 7.5, pz);
+    addCircleCollider(23.6, pz, 0.3);
   }
-  for (let i = 0; i < poleXs.length - 1; i++) {
+  for (let i = 0; i < poleZs.length - 1; i++) {
     for (const off of [-0.95, 0.95]) {
-      const p0 = new THREE.Vector3(poleXs[i], 7.45, 11.2 + off);
-      const p2 = new THREE.Vector3(poleXs[i + 1], 7.45, 11.2 + off);
+      const p0 = new THREE.Vector3(23.6 + off, 7.45, poleZs[i]);
+      const p2 = new THREE.Vector3(23.6 + off, 7.45, poleZs[i + 1]);
       const mid = p0.clone().add(p2).multiplyScalar(0.5);
       mid.y -= 1.3; // sag
       const wire = new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, mid, p2), 14, 0.03, 4), wireM);
       scene.add(wire);
     }
   }
+  // a service drop sagging from the mid pole across to the house eaves
+  (function serviceDrop() {
+    const p0 = new THREE.Vector3(23.6, 7.3, -13);
+    const p2 = new THREE.Vector3(0.5, 5.6, -20);
+    const mid = p0.clone().add(p2).multiplyScalar(0.5); mid.y -= 1.6;
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, mid, p2), 14, 0.025, 4), wireM));
+  })();
   // low stone wall edging the front garden bed (photo detail)
   for (let i = 0; i < 11; i++) {
     const t = i / 10;
@@ -824,22 +949,40 @@ addCircleCollider(3.5, 8.5, 0.4);
     blobs.push({ x: bx, z: -17.5, r: 0.9 });
   }
   // neighbor cabins tucked into the trees down the lane
-  function cabin(cx) {
-    const c = gableHouse(cx, -3, 8, 7, 3.4, 2);
+  function cabin(cx, cz, ry, number) {
+    const c = gableHouse(cx, cz, 8, 7, 3.4, 2);
+    c.rotation.y = ry;
     box(1.1, 2.1, 0.14, DOORC, 0, 1.05, 3.57, c);
     windowPane(c, -2.2, 1.9, 3.6, 1.1, 1.1);
     windowPane(c, 2.2, 1.9, 3.6, 1.1, 1.1);
-    const drive = box(3, 0.05, 6.5, 0x9a8f7d, cx + 2.2, 0.03, 3.6);
-    drive.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xbfb49e });
-    drive.castShadow = false;
-    addBoxCollider(cx - 4.2, cx + 4.2, -6.8, 0.8);
-    blobs.push({ x: cx, z: -3, r: 5 });
+    if (number) { // little address plaque by the door
+      const cv = document.createElement('canvas'); cv.width = 96; cv.height = 48;
+      const cc = cv.getContext('2d');
+      cc.fillStyle = '#2c1c12'; cc.fillRect(0, 0, 96, 48);
+      cc.strokeStyle = '#c9a227'; cc.lineWidth = 3; cc.strokeRect(3, 3, 90, 42);
+      cc.fillStyle = '#e8d9a0'; cc.font = 'bold 30px Georgia'; cc.textAlign = 'center'; cc.textBaseline = 'middle';
+      cc.fillText(number, 48, 26);
+      const plq = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+      plq.position.set(1.2, 2.1, 3.59);
+      c.add(plq);
+    }
+    if (Math.abs(Math.sin(ry)) > 0.5) addBoxCollider(cx - 3.8, cx + 3.8, cz - 4.2, cz + 4.2);
+    else addBoxCollider(cx - 4.2, cx + 4.2, cz - 3.8, cz + 3.8);
+    blobs.push({ x: cx, z: cz, r: 5 });
   }
-  cabin(-46);
-  cabin(47);
+  // 111 River Ln — the brown cabin across the lane (it's in the street view)
+  cabin(27.5, -2, -Math.PI / 2, '111');
+  const drv1 = box(3.2, 0.05, 3, 0x9a8f7d, 22.4, 0.03, -2);
+  drv1.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xbfb49e });
+  drv1.castShadow = false;
+  // a second cabin tucked off Hwy 9
+  cabin(-47, -33.6, Math.PI);
+  const drv2 = box(3.2, 0.05, 3.2, 0x9a8f7d, -47, 0.03, -38);
+  drv2.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xbfb49e });
+  drv2.castShadow = false;
   // the neighbor's faded old pickup
   (function pickup() {
-    const g = new THREE.Group(); g.position.set(43.2, 0, 5.2); g.rotation.y = 0.22; scene.add(g);
+    const g = new THREE.Group(); g.position.set(31.5, 0, 4.8); g.rotation.y = -1.35; scene.add(g);
     const paint = new THREE.MeshStandardMaterial({ color: 0x5d7a87, roughness: 0.55, metalness: 0.25, envMapIntensity: 0.6 });
     for (const [w2, h2, d2, y2, z2] of [[1.9, 1.0, 1.7, 1.25, -0.9], [1.8, 0.55, 1.3, 0.95, -2.2], [1.9, 0.6, 2.2, 0.9, 1.1]]) {
       const part = new THREE.Mesh(new THREE.BoxGeometry(w2, h2, d2), paint);
@@ -852,8 +995,8 @@ addCircleCollider(3.5, 8.5, 0.4);
       const wh = cyl(0.34, 0.34, 0.24, 0x151515, wx, 0.34, wz, g, 10);
       wh.rotation.z = Math.PI / 2;
     }
-    addCircleCollider(43.2, 5.2, 2.6);
-    blobs.push({ x: 43.2, z: 5.2, r: 3 });
+    addCircleCollider(31.5, 4.8, 2.6);
+    blobs.push({ x: 31.5, z: 4.8, r: 3 });
   })();
 })();
 
@@ -874,10 +1017,10 @@ function woodSign(x, z, ry, lines, w) {
   p.position.set(0, 2.25, 0.09); g.add(p);
   addCircleCollider(x, z, 1.0);
 }
-woodSign(-24, 9, 0.5, ['WELCOME TO', 'FELTON, CA'], 3.4);
-woodSign(4, 17.4, Math.PI + 0.15, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'], 3.6);
+woodSign(-36, -38.2, Math.PI + 0.1, ['WELCOME TO', 'FELTON, CA'], 3.4);
+woodSign(23.6, 17.5, -Math.PI / 2 - 0.12, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'], 3.6);
 (function streetBlade() { // RIVER LN at the end of the driveway
-  const g = new THREE.Group(); g.position.set(-1, 0, 10.5); g.rotation.y = -0.3; scene.add(g);
+  const g = new THREE.Group(); g.position.set(14.6, 0, -38.4); g.rotation.y = -0.7; scene.add(g);
   cyl(0.05, 0.05, 2.8, 0x7a7d80, 0, 1.4, 0, g, 8);
   const cv = document.createElement('canvas'); cv.width = 220; cv.height = 48;
   const c = cv.getContext('2d');
@@ -892,8 +1035,58 @@ woodSign(4, 17.4, Math.PI + 0.15, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'], 3.6);
     blade.rotation.y = face;
     g.add(blade);
   }
-  addCircleCollider(-1, 10.5, 0.3);
+  addCircleCollider(14.6, -38.4, 0.3);
 })();
+
+// ---- Hwy 9 ambient traffic: locals headed for Felton or Santa Cruz ----
+const traffic = [];
+(function buildTraffic() {
+  const paints = [0x8a3a2e, 0x3a5a7a, 0xd8d4c8];
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const paint = new THREE.MeshStandardMaterial({ color: paints[i], roughness: 0.5, metalness: 0.25, envMapIntensity: 0.5 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.72, 1.85), paint);
+    body.position.y = 0.72; body.castShadow = true; g.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.6, 1.7), paint);
+    cabin.position.set(-0.25, 1.35, 0); cabin.castShadow = true; g.add(cabin);
+    const glass = box(2.14, 0.42, 1.6, 0x26333c, -0.25, 1.38, 0, g);
+    glass.material = mat(0x26333c, { emissive: 0x101b22 });
+    for (const [wx, wz] of [[-1.35, 0.95], [1.35, 0.95], [-1.35, -0.95], [1.35, -0.95]]) {
+      const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.2, 10), mat(0x151515));
+      wh.rotation.x = Math.PI / 2; wh.position.set(wx, 0.33, wz); g.add(wh);
+    }
+    const headM = new THREE.MeshLambertMaterial({ color: 0xfff3c0, emissive: 0x000000 });
+    const tailM = new THREE.MeshLambertMaterial({ color: 0x8a1c14, emissive: 0x000000 });
+    for (const s of [-0.6, 0.6]) {
+      const hd = box(0.1, 0.16, 0.34, 0xfff3c0, 2.11, 0.78, s, g); hd.material = headM;
+      const tl = box(0.1, 0.14, 0.3, 0x8a1c14, -2.11, 0.8, s, g); tl.material = tailM;
+    }
+    nightBulbMats.push({ m: headM, base: 0xfff0b0, window: true });
+    nightBulbMats.push({ m: tailM, base: 0xd83a2a, window: true });
+    const dir = i === 1 ? -1 : 1; // two eastbound, one westbound
+    g.rotation.y = dir > 0 ? 0 : Math.PI;
+    g.visible = false;
+    scene.add(g);
+    traffic.push({ g, dir, z: HWY9.z + dir * -2.2, speed: rand(11.5, 14.5), active: false, t: rand(3, 9) + i * 7, whooshed: false });
+  }
+})();
+function updateTraffic(dt) {
+  for (const c of traffic) {
+    if (!c.active) {
+      c.t -= dt;
+      if (c.t <= 0) { c.active = true; c.g.visible = true; c.x = -c.dir * 92; c.whooshed = false; }
+      continue;
+    }
+    c.x += c.dir * c.speed * dt;
+    c.g.position.set(c.x, 0, c.z);
+    if (Math.abs(c.x) > 92) { c.active = false; c.g.visible = false; c.t = rand(6, 22); continue; }
+    if (player) {
+      const dx = Math.abs(c.x - player.pos.x), dz = Math.abs(c.z - player.pos.z);
+      if (!c.whooshed && dx < 7 && dz < 11) { c.whooshed = true; tone(130 + Math.random() * 50, 0.5, 'sawtooth', 0.04); }
+      if (dx > 24) c.whooshed = false;
+    }
+  }
+}
 
 // ---------- Redwood forest ----------
 const foliageMat = mat(0x24401f), foliageMat2 = mat(0x2e5026);
@@ -960,25 +1153,29 @@ function buildFoliage() {
 }
 // dense redwood forest crowding the neighborhood (like the real property)
 let placed = 0, guard = 0;
-while (placed < 62 && guard++ < 700) {
+while (placed < 68 && guard++ < 800) {
   const a = rand(0, Math.PI * 2), d = rand(22, 80);
   const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
   if (x > -20 && x < 20 && z > -28.5 && z < 18) continue; // keep the yard clear
-  if (z > 8.5 && z < 43) continue;                        // keep the lane, resort, river & tracks clear
+  if (z > 16 && z < 43 && x > 12) continue;               // resort, river crossing & tracks
+  if (z > 25 && z < 43) continue;                         // river banks
+  if (onRoad(x, z, 2.6)) continue;                        // Hwy 9 + River Ln
+  if (x > -30 && x < 30 && z > -40 && z < -28.5) continue; // house backdrop stays airy
   if (!spotIsClear(x, z, 2.2)) continue;
   redwood(x, z, rand(0.8, 1.7));
   placed++;
 }
 // hero redwoods hugging the house and driveway, exactly like the photos
-for (const [hx, hz, hs] of [[-18.5, -29.5, 1.5], [19.5, -30, 1.7], [17.8, -7, 1.15], [-21, -6.5, 1.1], [-24.5, -21, 1.35], [24, -19, 1.45]]) {
-  if (spotIsClear(hx, hz, 1.2)) redwood(hx, hz, hs);
+for (const [hx, hz, hs] of [[-18.5, -29.5, 1.5], [32, -25, 1.7], [24.5, -7.5, 1.15], [-21, -6.5, 1.1], [-24.5, -21, 1.35], [-14, 6, 1.45], [7, 13, 1.3], [-3, 16, 1.05]]) {
+  if (!onRoad(hx, hz, 1.4) && spotIsClear(hx, hz, 1.2)) redwood(hx, hz, hs);
 }
 buildFoliage();
 // dark huckleberry understory beneath the canopy
 for (let i = 0; i < 16; i++) {
   const a = rand(0, Math.PI * 2), d = rand(24, 55);
   const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
-  if (z > 8.5 && z < 43) continue;
+  if (z > 25 && z < 43) continue;
+  if (onRoad(x, z, 1)) continue;
   if (!spotIsClear(x, z, 0.8)) continue;
   const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.6, 1.3), 7, 6), mat(0x25381f));
   b.scale.y = 0.7;
@@ -1003,32 +1200,80 @@ for (const [x, z] of [[-4, -13], [-11, -12]]) {
   addCircleCollider(x, z, 0.5);
   blobs.push({ x, z, r: 2 });
 }
-blobs.push({ x: -17, z: -12, r: 3 });                       // the Mini
-for (const [bx, bz] of [[8.5, 22.5], [16.5, 21.5], [24.5, 22.8]]) blobs.push({ x: bx, z: bz, r: 3.4 }); // RVs
+blobs.push({ x: 9.5, z: -14, r: 3 });                       // the Mini
+for (const [bx, bz] of [[26.5, 22.5], [34.5, 21.5], [42.5, 22.8]]) blobs.push({ x: bx, z: bz, r: 3.4 }); // RVs
 
 // ---------- Ambience: a living redwood forest ----------
-// ferns clustered near the trees
-(function ferns() {
-  const frondMat = mat(0x2f5a2a);
-  for (let i = 0; i < 26; i++) {
-    const a = rand(0, Math.PI * 2), d = rand(24, 66);
+// sword ferns — THE Felton understory — as painted crossed cards, one instanced draw call
+(function swordFerns() {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 96;
+  const c = cv.getContext('2d');
+  const greens = ['#39662c', '#2e5624', '#457a35', '#26481e'];
+  for (let f = 0; f < 12; f++) { // fronds fanning up from the base
+    const a = -Math.PI / 2 + (f - 5.5) * 0.24 + rand(-0.05, 0.05);
+    const len = rand(42, 60);
+    const tipX = 64 + Math.cos(a) * len, tipY = 92 + Math.sin(a) * len;
+    const midX = 64 + Math.cos(a) * len * 0.5, midY = 92 + Math.sin(a) * len * 0.5 - 4;
+    c.strokeStyle = greens[f % greens.length];
+    c.lineWidth = 2;
+    c.beginPath(); c.moveTo(64, 92); c.quadraticCurveTo(midX, midY, tipX, tipY); c.stroke();
+    for (let l = 0.15; l < 1; l += 0.09) { // leaflets along each frond
+      const t = l, ix = (1 - t) * (1 - t) * 64 + 2 * (1 - t) * t * midX + t * t * tipX,
+        iy = (1 - t) * (1 - t) * 92 + 2 * (1 - t) * t * midY + t * t * tipY;
+      const na = a + Math.PI / 2, ll = (1 - t) * 9 + 2;
+      c.lineWidth = 2.2;
+      c.beginPath();
+      c.moveTo(ix - Math.cos(na) * ll, iy - Math.sin(na) * ll);
+      c.lineTo(ix + Math.cos(na) * ll, iy + Math.sin(na) * ll);
+      c.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  const geo = new THREE.PlaneGeometry(1.7, 1.15);
+  geo.translate(0, 0.5, 0);
+  const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.28, side: THREE.DoubleSide });
+  const N = 130;
+  const inst = new THREE.InstancedMesh(geo, m, N * 2); // two crossed cards per fern
+  const dummy = new THREE.Object3D();
+  let n = 0;
+  for (let i = 0; i < 900 && n < N; i++) {
+    const a = rand(0, Math.PI * 2), d = rand(23, 72);
     const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
     if (x > -20 && x < 20 && z > -30 && z < 16) continue;
-    const g = new THREE.Group();
-    g.position.set(x, 0, z);
-    const n = 6;
-    for (let f = 0; f < n; f++) {
-      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, rand(0.8, 1.3), 5), frondMat);
-      frond.scale.z = 0.25;
-      frond.position.y = 0.15;
-      frond.rotation.set(-1.15, 0, 0);
-      const holder = new THREE.Group();
-      holder.rotation.y = (f / n) * Math.PI * 2 + rand(-0.2, 0.2);
-      holder.add(frond);
-      g.add(holder);
+    if (onRoad(x, z, 0.8) || (z > 25 && z < 43)) continue;
+    if (!spotIsClear(x, z, 0.5)) continue;
+    const s = rand(0.7, 1.7), ry = rand(0, Math.PI);
+    for (const rot of [0, Math.PI / 2]) {
+      dummy.position.set(x, 0, z);
+      dummy.rotation.set(rand(-0.08, 0.08), ry + rot, rand(-0.08, 0.08));
+      dummy.scale.setScalar(s);
+      dummy.updateMatrix();
+      inst.setMatrixAt(n * 2 + (rot ? 1 : 0), dummy.matrix);
     }
-    scene.add(g);
-    swayers.push({ obj: g, phase: rand(0, 9), amp: 0.06 });
+    n++;
+  }
+  inst.count = n * 2;
+  inst.receiveShadow = true;
+  scene.add(inst);
+})();
+// low sun shafts slanting through the canopy (fade with daylight, gone in rain)
+const shaftMats = [];
+(function sunShafts() {
+  const geo = new THREE.CylinderGeometry(0.32, 2.6, 17, 7, 1, true);
+  const picks = treeReg.filter(t => t.z > -55 && t.z < 22 && Math.abs(t.x) < 65);
+  for (let i = 0; i < Math.min(9, picks.length); i++) {
+    const t = picks[Math.floor(rand(0, picks.length))];
+    const m = new THREE.MeshBasicMaterial({
+      color: 0xfff3d0, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide,
+    });
+    const shaft = new THREE.Mesh(geo, m);
+    shaft.position.set(t.x + rand(1.5, 3.5), 8.4, t.z + rand(-2, 2));
+    shaft.rotation.z = 0.24; shaft.rotation.x = rand(-0.08, 0.08);
+    shaft.renderOrder = 3;
+    scene.add(shaft);
+    shaftMats.push({ m, base: rand(0.07, 0.11) });
   }
 })();
 // mushroom clusters
@@ -1037,6 +1282,7 @@ for (const [bx, bz] of [[8.5, 22.5], [16.5, 21.5], [24.5, 22.8]]) blobs.push({ x
     const a = rand(0, Math.PI * 2), d = rand(22, 60);
     const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
     if (x > -20 && x < 20 && z > -30 && z < 16) continue;
+    if (onRoad(x, z, 0.6) || (z > 25 && z < 43)) continue;
     for (let m = 0; m < 2 + Math.floor(rand(0, 2)); m++) {
       const s = rand(0.5, 1.1);
       const mx = x + rand(-0.6, 0.6), mz = z + rand(-0.6, 0.6);
@@ -1100,9 +1346,9 @@ for (let i = 0; i < 12; i++) {
   const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
   let n = 0;
   for (let i = 0; i < 5600 && n < 1500; i++) {
-    const x = rand(-44, 44), z = rand(-34, 18);
-    if (x > 0 && x < 16 && z > -18.5 && z < 10) continue;      // driveway
-    if (z > 9 && z < 17) continue;                             // road
+    const x = rand(-44, 44), z = rand(-31, 18);
+    if (x > 3 && x < 16.5 && z > -19 && z < -9.5) continue;    // driveway pad
+    if (onRoad(x, z, 0.4)) continue;                           // lane + Hwy 9
     if (!spotIsClear(x, z, 0.2)) continue;
     dummy.position.set(x, 0, z);
     dummy.rotation.set(rand(-0.12, 0.12), rand(0, Math.PI), rand(-0.12, 0.12));
@@ -2543,7 +2789,7 @@ function dropFaylen() {
 const SPECIALS = {
   eric: { label: '📢 Dad joke', fn(t) { say(t, '📢 ' + DAD_JOKES[Math.floor(rand(0, DAD_JOKES.length))], 4.5); setTimeout(() => say(player, 'DAAAD. 🙄', 2), 2300); } },
   jessy: { label: '🍎 Ask for snack', fn(t) { say(t, 'Here. Eat. You look like you’re about to do something reckless.', 3); player.buffT = 20; toast('🍎 SNACK POWER! +30% speed for 20s', 3); blip(); } },
-  liam: { label: '🏁 Race to mailbox', fn(t) { t.raceTarget = new THREE.Vector3(3.5, 0, 7); raceState = { racing: true, t: 0 }; toast('🏁 RACE! First one to the mailbox! GO GO GO!', 3); say(t, 'You’re about to get DUSTED.', 2.5); } },
+  liam: { label: '🏁 Race to mailbox', fn(t) { t.raceTarget = new THREE.Vector3(13.6, 0, -10.6); raceState = { racing: true, t: 0 }; toast('🏁 RACE! First one to the mailbox! GO GO GO!', 3); say(t, 'You’re about to get DUSTED.', 2.5); } },
   maddie: { label: '💃 Dance party', fn(t) { for (const f of family) if (f.pos.distanceTo(t.pos) < 9) f.danceT = 3; [523, 659, 784, 659, 523, 784].forEach((f2, i) => tone(f2, 0.15, 'triangle', 0.08, i * 0.14)); throwConfetti(t.pos); say(t, 'DANCE BREAK. It’s mandatory.', 2.5); score += 3; } },
   rowan: { label: '🏃 Play tag', fn(t) { t.fleeTag = 15; say(t, 'CAN’T CATCH ME, I HAD JUICE!', 2.5); toast('🏃 Rowan is IT-proof for 15s. Catch him!', 3); } },
   faylen: { label: '🎒 Piggyback', fn(t) { t.riding = 25; say(t, 'UPPY!!! 🥹', 2); toast('🎒 Faylen is aboard. Precious cargo mode: slightly slower.', 3); } },
@@ -2551,7 +2797,7 @@ const SPECIALS = {
 function updateRace(dt) {
   if (!raceState || !raceState.racing) return;
   const liam = family[2];
-  const mail = new THREE.Vector3(3.5, 0, 7);
+  const mail = new THREE.Vector3(13.6, 0, -10.6);
   const pd = player.pos.distanceTo(mail), ld = liam.pos.distanceTo(mail);
   if (pd < 1.9 || ld < 1.9) {
     raceState.racing = false;
@@ -2580,7 +2826,7 @@ const MAIL_LINES = [
   '📬 The neighbor’s mail. Again. Off to the RV resort with you.',
 ];
 const objectActions = [
-  { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 3.5, p.z - 8.5) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
+  { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 14.9, p.z + 10.6) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
   { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x + 8, p.z + 17.6) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
   { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 23 && p.z < 27.4, fn() { skipStone(); } },
@@ -3219,8 +3465,10 @@ function updateDayNight(dt, now) {
     if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF); }
     else { const tw = 0.6 + Math.sin(now * 0.006 + (b.twinkle || 0)) * 0.4; b.m.emissive.setHex(b.base); b.m.emissive.multiplyScalar(0.3 + nF * tw); }
   }
-  renderer.toneMappingExposure = 1.0 + nF * 0.2; // lift a touch so night is moody, not black
+  renderer.toneMappingExposure = 1.0 + nF * 0.08; // tiny lift so night is moody, not black
   if (bloomPass) bloomPass.strength = 0.22 + nF * 0.33; // lamps, windows and fire glow at night
+  const shaftF = Math.pow(dF, 1.6) * (ACT2.weather === 0 ? 1 : ACT2.weather === 1 ? 0.35 : 0);
+  for (const s of shaftMats) s.m.opacity = s.base * shaftF;
 }
 
 // ---- Flashlight + fireflies motion (called each frame) ----
@@ -3395,9 +3643,9 @@ function updateRiding(dt) {
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.3), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
     banner.position.set(-8, 5.6, -17.6); scene.add(banner);
     // cake on the picnic table
-    const cake = cyl(0.5, 0.55, 0.4, 0xfff0e0, 12.5, 1.0, 19.2, null, 16);
-    cyl(0.5, 0.5, 0.06, 0xffb3c8, 12.5, 1.25, 19.2, null, 16);
-    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cyl(0.02, 0.02, 0.2, 0xffe08a, 12.5 + Math.cos(a) * 0.3, 1.4, 19.2 + Math.sin(a) * 0.3, null, 4); }
+    const cake = cyl(0.5, 0.55, 0.4, 0xfff0e0, 30.5, 1.0, 19.2, null, 16);
+    cyl(0.5, 0.5, 0.06, 0xffb3c8, 30.5, 1.25, 19.2, null, 16);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cyl(0.02, 0.02, 0.2, 0xffe08a, 30.5 + Math.cos(a) * 0.3, 1.4, 19.2 + Math.sin(a) * 0.3, null, 4); }
     calendar.message = '🎂 It’s ' + todayBday.name + '’s birthday today! The yard threw a party.';
   } else if (M === 12 && D <= 26) {
     // holiday string lights along the eaves + a wreath
@@ -3522,10 +3770,10 @@ try { ACT2.trial.best = JSON.parse(localStorage.getItem('fisch_trial_best') || '
   const shopMat = new THREE.MeshLambertMaterial({ map: sidingTex });
   const boardMat = new THREE.MeshLambertMaterial({ map: plankTex });
   // wooden boardwalk fronting the shops
-  const walk = box(30, 0.12, 3, 0x6b4a30, -64, 0.09, 15.5);
+  const walk = box(30, 0.12, 3, 0x6b4a30, -58, 0.09, -37.7);
   walk.material = boardMat;
   function shop(cx, w, h, color, name, awning) {
-    const g = new THREE.Group(); g.position.set(cx, 0, 19); g.rotation.y = Math.PI; scene.add(g); // storefronts face the boardwalk + lane
+    const g = new THREE.Group(); g.position.set(cx, 0, -33); g.rotation.y = Math.PI; scene.add(g); // storefronts face the boardwalk + Hwy 9
     const body = box(w, h, 7, color, 0, h / 2, 0, g); body.material = shopMat; body.material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
     // false-front parapet (old-timey main street)
     box(w + 0.4, 1.1, 0.4, color, 0, h + 0.4, 3.3, g).material = new THREE.MeshLambertMaterial({ map: sidingTex, color });
@@ -3543,23 +3791,23 @@ try { ACT2.trial.best = JSON.parse(localStorage.getItem('fisch_trial_best') || '
     c.fillText(name, 128, 34);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
     sign.position.set(0, h - 0.3, 3.62, g); sign.position.z = 3.62; g.add(sign);
-    addBoxCollider(cx - w / 2, cx + w / 2, 15.7, 22.6);
-    blobs.push({ x: cx, z: 19, r: w * 0.6 });
+    addBoxCollider(cx - w / 2, cx + w / 2, -36.6, -29.4);
+    blobs.push({ x: cx, z: -33, r: w * 0.6 });
   }
-  shop(-74, 8, 4, 0xc27a4e, 'FELTON COFFEE', 0xa84636);
-  shop(-64, 9, 4.6, 0xa9b199, 'FELTON MARKET', 0x3f7a62);
-  shop(-54, 8, 4.2, 0xcbb476, 'THE TRADING POST', 0x4d63a0);
+  shop(-68, 8, 4, 0xc27a4e, 'FELTON COFFEE', 0xa84636);
+  shop(-58, 9, 4.6, 0xa9b199, 'FELTON MARKET', 0x3f7a62);
+  shop(-48, 8, 4.2, 0xcbb476, 'THE TRADING POST', 0x4d63a0);
   // street lamps that glow at night
-  for (const lx of [-79, -69, -59, -49]) {
-    cyl(0.09, 0.12, 4, 0x2b2b2f, lx, 2, 14.2, null, 8);
+  for (const lx of [-73, -63, -53, -43]) {
+    cyl(0.09, 0.12, 4, 0x2b2b2f, lx, 2, -38.9, null, 8);
     const lampM = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0x3a2e12 });
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), lampM);
-    lamp.position.set(lx, 4.1, 14.2); scene.add(lamp);
+    lamp.position.set(lx, 4.1, -38.9); scene.add(lamp);
     nightBulbMats.push({ m: lampM, base: 0xffcf7a });
-    const lp = new THREE.PointLight(0xffce85, 0, 9, 1.6); lp.position.set(lx, 4, 14.2); scene.add(lp);
+    const lp = new THREE.PointLight(0xffce85, 0, 9, 1.6); lp.position.set(lx, 4, -38.9); scene.add(lp);
     nightBulbMats.push({ lightRef: lp });
   }
-  ACT2.downtownCenter = { x: -64, z: 19 };
+  ACT2.downtownCenter = { x: -58, z: -33 };
 })();
 
 // ---- Fishing dock on the San Lorenzo ----
@@ -3830,6 +4078,7 @@ window.addEventListener('keydown', e => {
 
 // ---------- Main loop ----------
 let last = performance.now();
+frame.lastEnvF = 99; // force first-frame env pass
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -3886,6 +4135,7 @@ function frame(now) {
   updateNightFX(dt, now);
   updateSquirrel(dt);
   updateTrain(dt);
+  updateTraffic(dt);
   // the San Lorenzo actually flows (texture drift + a light cross-ripple)
   waterTex.offset.x -= dt * 0.05;
   waterTex.offset.y = Math.sin(now * 0.0005) * 0.03;
@@ -3893,12 +4143,17 @@ function frame(now) {
   updateConfetti(dt);
   updateBubbles(dt);
   updateCamera(dt);
-  if (!frame.envTuned) { // one-shot: calm env reflections on world PBR materials
-    frame.envTuned = true;
+  // image-based light is a daytime sky — fade it out after dark or the ground glows at night.
+  // Runs a traverse only when the light level actually moves (and picks up late-loaded assets).
+  const envF = 0.1 + dayNight.dayF * 0.9;
+  if (Math.abs(envF - frame.lastEnvF) > 0.02) {
+    frame.lastEnvF = envF;
     scene.traverse(o => {
       if (!o.material) return;
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
-        if (m.isMeshStandardMaterial && m.envMapIntensity === 1) m.envMapIntensity = 0.4;
+        if (!m.isMeshStandardMaterial) return;
+        if (m.userData.envBase === undefined) m.userData.envBase = m.envMapIntensity === 1 ? 0.4 : m.envMapIntensity;
+        m.envMapIntensity = m.userData.envBase * envF;
       });
     });
   }
@@ -3917,7 +4172,8 @@ window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, pho
   weather: () => ACT2.weather, fishing: () => ACT2.fishing.active, zip: () => ACT2.zip.riding, trial: () => ACT2.trial.active,
   cycleWeather, startFishing, castLine, reelIn,
   atTop: () => ACT2.zip.atTop, trialT: () => ACT2.trial.t, startTrial, endTrial, climbZip, rideZip, enterCar, exitCar,
-  carPos: () => car.g.position, carCollider: () => colliders[car.colliderIndex], fxaa: () => !!fxaaPass, boardTrain, hopOffTrain };
+  carPos: () => car.g.position, carSpeed: () => car.speed, carCollider: () => colliders[car.colliderIndex], fxaa: () => !!fxaaPass, boardTrain, hopOffTrain,
+  traffic: () => traffic.map(c => ({ active: c.active, x: c.active ? +c.x.toFixed(1) : null, dir: c.dir })), trafficRaw: () => traffic };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
