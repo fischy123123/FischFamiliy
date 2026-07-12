@@ -16,6 +16,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0; // tuned for sRGB-decoded surface textures
+const FINE = matchMedia('(pointer: fine)').matches; // desktops get the max-quality tier
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc7e8);
@@ -27,13 +29,13 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 let composer = null, bloomPass = null, fxaaPass = null;
 function fitFXAA() {
   if (!fxaaPass) return;
-  const pr = Math.min(window.devicePixelRatio || 1, 1.75);
+  const pr = Math.min(window.devicePixelRatio || 1, FINE ? 2 : 1.75);
   fxaaPass.uniforms.resolution.value.set(1 / (window.innerWidth * pr), 1 / (window.innerHeight * pr));
 }
 (function postFX() {
   if (!THREE.EffectComposer || !THREE.UnrealBloomPass || !THREE.ShaderPass) return;
   composer = new THREE.EffectComposer(renderer);
-  composer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  composer.setPixelRatio(Math.min(window.devicePixelRatio || 1, FINE ? 2 : 1.75));
   composer.addPass(new THREE.RenderPass(scene, camera));
   const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.55, 0.8);
   composer.addPass(bloom);
@@ -72,12 +74,14 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffd9a0, 1.5);
 sun.position.set(35, 55, 20);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -100; sun.shadow.camera.right = 100;
-sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100;
+sun.shadow.mapSize.set(FINE ? 4096 : 2048, FINE ? 4096 : 2048);
+// tight frustum that follows the player — far crisper than one map stretched over the whole valley
+sun.shadow.camera.left = -46; sun.shadow.camera.right = 46;
+sun.shadow.camera.top = 46; sun.shadow.camera.bottom = -46;
 sun.shadow.camera.far = 280;
 sun.shadow.bias = -0.0005;
 scene.add(sun);
+scene.add(sun.target);
 
 // ---------- Helpers ----------
 const mats = {};
@@ -108,6 +112,7 @@ function canvasTex(w, h, draw, rx, ry) {
   draw(cv.getContext('2d'), w, h);
   const tex = new THREE.CanvasTexture(cv);
   tex.encoding = THREE.sRGBEncoding; // painted colors are sRGB — without this every surface washes out pale
+  tex.anisotropy = MAX_ANISO;        // keeps roads/ground sharp at grazing angles
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   if (rx) tex.repeat.set(rx, ry || rx);
   return tex;
@@ -348,6 +353,7 @@ function onRoad(x, z, pad) {
   const p = pad || 0;
   if (Math.abs(z - HWY9.z) < HWY9.halfW + p && Math.abs(x) < 78) return true;
   if (Math.abs(x - LANE.x) < LANE.halfW + p && z > LANE.z0 - p && z < LANE.z1 + p) return true;
+  if (x > 0 - p && x < 16.5 + p && z > -26.5 - p && z < -18 + p) return true; // driveway apron
   return false;
 }
 function clearSpot(minR, maxR, r) {
@@ -425,7 +431,7 @@ scene.add(ground);
 const duffMat = new THREE.MeshLambertMaterial({ map: duffTex });
 for (let i = 0; i < 38; i++) {
   const duffR = rand(2, 7);
-  const p = new THREE.Mesh(new THREE.CircleGeometry(duffR, 10), duffMat);
+  const p = new THREE.Mesh(new THREE.CircleGeometry(duffR, 22), duffMat);
   p.rotation.x = -Math.PI / 2;
   p.rotation.z = rand(0, 9);
   let dx2 = rand(-80, 80), dz2 = rand(-80, 80);
@@ -438,16 +444,16 @@ for (let i = 0; i < 38; i++) {
 // and River Ln is a short cracked dead-end lane running north from it, past the
 // house, ending at the San Lorenzo. (See the street view + aerial.)
 const paverTex = canvasTex(256, 256, (c, w, h) => {
-  c.fillStyle = '#8a7357'; c.fillRect(0, 0, w, h); // sand joints
+  c.fillStyle = '#6e5940'; c.fillRect(0, 0, w, h); // sand joints
   let row = 0;
   for (let y = 0; y < h; y += 24) {
     for (let x = -24; x < w; x += 42) {
-      c.fillStyle = ['#a08464', '#93755a', '#ab8f6c', '#87694e'][Math.floor(rand(0, 4))];
+      c.fillStyle = ['#8a6a4a', '#7d5c42', '#96775a', '#715234'][Math.floor(rand(0, 4))];
       c.fillRect(x + (row % 2) * 21 + 2, y + 2, 38, 20);
     }
     row++;
   }
-  speckle(c, w, h, ['#6f5a42', '#b59a76'], 260, 1, 4);
+  speckle(c, w, h, ['#5c4630', '#a0805c'], 260, 1, 4);
 }, 4, 4);
 const asphaltMat = new THREE.MeshStandardMaterial({ map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.03, roughness: 0.95, metalness: 0 });
 const hwy = box(152, 0.1, HWY9.halfW * 2, 0x3c3c40, 0, 0.03, HWY9.z);
@@ -468,11 +474,26 @@ for (let i = 0; i < 7; i++) box(0.8, 0.08, 1.1, 0x9a8f7d, 3.6 + i * 1.35, 0.06, 
 // the San Lorenzo River (real layout: house → River Ln → RV resort → river → Henry Cowell)
 const water = new THREE.Mesh(new THREE.PlaneGeometry(180, 10), new THREE.MeshPhongMaterial({
   map: waterTex, transparent: true, opacity: 0.94,
-  shininess: 90, specular: 0x9fc3d0,
+  shininess: 55, specular: 0x628c9a,
 }));
 water.rotation.x = -Math.PI / 2;
 water.position.set(0, 0.01, 33);
 scene.add(water);
+// sun glints riding the current (additive, scrolled against the water drift each frame)
+const sparkleTex = canvasTex(256, 128, (c, w, h) => {
+  c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 130; i++) {
+    c.fillStyle = ['#ffffff', '#cfe8f0', '#9fd8e8'][i % 3];
+    c.globalAlpha = rand(0.25, 0.9);
+    c.fillRect(rand(0, w), rand(0, h), rand(2, 7), 1.2);
+  }
+  c.globalAlpha = 1;
+}, 24, 3);
+const sparkleMat = new THREE.MeshBasicMaterial({ map: sparkleTex, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+const riverSparkle = new THREE.Mesh(new THREE.PlaneGeometry(180, 10), sparkleMat);
+riverSparkle.rotation.x = -Math.PI / 2;
+riverSparkle.position.set(0, 0.055, 33);
+scene.add(riverSparkle);
 for (const bz of [27.9, 38.1]) { // sandy banks
   const bank = box(180, 0.08, 1.6, 0x8a7a5e, 0, 0.03, bz);
   bank.castShadow = false;
@@ -1186,6 +1207,7 @@ while (placed < 68 && guard++ < 800) {
   if (z > 16 && z < 43 && x > 12) continue;               // resort, river crossing & tracks
   if (z > 25 && z < 43) continue;                         // river banks
   if (onRoad(x, z, 2.6)) continue;                        // Hwy 9 + River Ln
+  if (Math.hypot(x - 17, z - 50) < 9.5) continue;          // the swimming hole is not a planter
   if (x > -30 && x < 30 && z > -40 && z < -28.5) continue; // house backdrop stays airy
   if (!spotIsClear(x, z, 2.2)) continue;
   redwood(x, z, rand(0.8, 1.7));
@@ -1201,7 +1223,7 @@ for (let i = 0; i < 16; i++) {
   const a = rand(0, Math.PI * 2), d = rand(24, 55);
   const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
   if (z > 25 && z < 43) continue;
-  if (onRoad(x, z, 1)) continue;
+  if (onRoad(x, z, 1) || Math.hypot(x - 17, z - 50) < 8.5) continue;
   if (!spotIsClear(x, z, 0.8)) continue;
   const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.6, 1.3), 7, 6), mat(0x25381f));
   b.scale.y = 0.7;
@@ -1259,7 +1281,7 @@ for (const [bx, bz] of [[26.5, 22.5], [34.5, 21.5], [42.5, 22.8]]) blobs.push({ 
   const geo = new THREE.PlaneGeometry(1.7, 1.15);
   geo.translate(0, 0.5, 0);
   const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.28, side: THREE.DoubleSide });
-  const N = 130;
+  const N = FINE ? 190 : 130;
   const inst = new THREE.InstancedMesh(geo, m, N * 2); // two crossed cards per fern
   const dummy = new THREE.Object3D();
   let n = 0;
@@ -1267,7 +1289,7 @@ for (const [bx, bz] of [[26.5, 22.5], [34.5, 21.5], [42.5, 22.8]]) blobs.push({ 
     const a = rand(0, Math.PI * 2), d = rand(23, 72);
     const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
     if (x > -20 && x < 20 && z > -30 && z < 16) continue;
-    if (onRoad(x, z, 0.8) || (z > 25 && z < 43)) continue;
+    if (onRoad(x, z, 0.8) || (z > 25 && z < 43) || Math.hypot(x - 17, z - 50) < 8) continue;
     if (!spotIsClear(x, z, 0.5)) continue;
     const s = rand(0.7, 1.7), ry = rand(0, Math.PI);
     for (const rot of [0, Math.PI / 2]) {
@@ -1308,7 +1330,7 @@ const shaftMats = [];
     const a = rand(0, Math.PI * 2), d = rand(22, 60);
     const x = Math.sin(a) * d, z = Math.cos(a) * d - 8;
     if (x > -20 && x < 20 && z > -30 && z < 16) continue;
-    if (onRoad(x, z, 0.6) || (z > 25 && z < 43)) continue;
+    if (onRoad(x, z, 0.6) || (z > 25 && z < 43) || Math.hypot(x - 17, z - 50) < 8) continue;
     for (let m = 0; m < 2 + Math.floor(rand(0, 2)); m++) {
       const s = rand(0.5, 1.1);
       const mx = x + rand(-0.6, 0.6), mz = z + rand(-0.6, 0.6);
@@ -1366,12 +1388,12 @@ for (let i = 0; i < 12; i++) {
 (function grass() {
   const geo = new THREE.PlaneGeometry(0.16, 0.28);
   geo.translate(0, 0.14, 0);
-  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 1500);
+  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), FINE ? 2400 : 1500);
   grassRef.inst = inst;
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
   let n = 0;
-  for (let i = 0; i < 5600 && n < 1500; i++) {
+  for (let i = 0; i < 9000 && n < (FINE ? 2400 : 1500); i++) {
     const x = rand(-44, 44), z = rand(-31, 18);
     if (x > 0 && x < 16.5 && z > -26.5 && z < -18) continue;    // driveway pad
     if (onRoad(x, z, 0.4)) continue;                           // lane + Hwy 9
@@ -1686,6 +1708,7 @@ function updateAmbience(dt, now) {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(rx, ry2);
       if (srgb) t.encoding = THREE.sRGBEncoding;
+      t.anisotropy = MAX_ANISO;
       t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
       apply(t);
       toast('📸 Photo upgrade loaded: ' + file, 2.5);
@@ -1717,7 +1740,7 @@ function updateAmbience(dt, now) {
   // scanned models replace the procedural redwoods / rocks, instanced for one draw call per mesh
   function prepMaterial(m2) {
     const ms = Array.isArray(m2) ? m2[0] : m2;
-    if (ms.map) ms.map.encoding = THREE.sRGBEncoding;
+    if (ms.map) { ms.map.encoding = THREE.sRGBEncoding; ms.map.anisotropy = MAX_ANISO; }
     if (ms.isMeshStandardMaterial) ms.envMapIntensity = 0.45;
     return ms;
   }
@@ -2361,11 +2384,14 @@ document.getElementById('mute').addEventListener('click', () => { initAudio(); t
 const bubbleLayer = document.getElementById('bubbles');
 const bubbles = [];
 function say(ch, text, secs) {
+  for (const b of bubbles) if (b.ch === ch) b.ttl = Math.min(b.ttl, 0.15); // one bubble per person
   const el = document.createElement('div');
   el.className = 'bubble';
   el.textContent = text;
   bubbleLayer.appendChild(el);
-  bubbles.push({ el, ch, ttl: secs || 3.2 });
+  // reading time scales with the line — nobody speed-reads while chasing a toddler
+  const need = 1.6 + text.split(/\s+/).length * 0.42;
+  bubbles.push({ el, ch, ttl: Math.max(secs || 0, need), px: null, py: null });
 }
 const v3 = new THREE.Vector3();
 function updateBubbles(dt) {
@@ -2377,9 +2403,19 @@ function updateBubbles(dt) {
     v3.project(camera);
     if (v3.z > 1) { b.el.style.display = 'none'; continue; }
     b.el.style.display = 'block';
-    b.el.style.left = ((v3.x * 0.5 + 0.5) * window.innerWidth) + 'px';
-    b.el.style.top = ((-v3.y * 0.5 + 0.5) * window.innerHeight) + 'px';
-    b.el.style.opacity = Math.min(1, b.ttl / 0.4);
+    // target position, clamped so the text never slides off screen
+    let tx = (v3.x * 0.5 + 0.5) * window.innerWidth;
+    let ty = (-v3.y * 0.5 + 0.5) * window.innerHeight;
+    tx = Math.max(110, Math.min(window.innerWidth - 110, tx));
+    ty = Math.max(70, Math.min(window.innerHeight - 120, ty));
+    // smooth the walk-bob and camera lerp out of it — the text holds still enough to read
+    if (b.px === null) { b.px = tx; b.py = ty; }
+    const k = Math.min(1, dt * 7);
+    b.px += (tx - b.px) * k;
+    b.py += (ty - b.py) * k;
+    b.el.style.left = b.px + 'px';
+    b.el.style.top = b.py + 'px';
+    b.el.style.opacity = Math.min(1, b.ttl / 0.3);
   }
 }
 let quipTimer = 5;
@@ -3337,6 +3373,8 @@ camera.lookAt(0, 2, -10);
   const pool = new THREE.Mesh(new THREE.CircleGeometry(PR, 32),
     new THREE.MeshPhongMaterial({ map: waterTex, transparent: true, opacity: 0.9, shininess: 110, specular: 0xbfe0ea }));
   pool.rotation.x = -Math.PI / 2; pool.position.set(PX, 0.04, PZ); scene.add(pool);
+  const ps = new THREE.Mesh(new THREE.CircleGeometry(PR - 0.3, 24), sparkleMat);
+  ps.rotation.x = -Math.PI / 2; ps.position.set(PX, 0.075, PZ); scene.add(ps);
   henryCowell.pool = { x: PX, z: PZ, r: PR, waterY: 0 };
   swimZones.push({ x: PX, z: PZ, r: PR - 0.6 });
   // sandy/rocky rim
@@ -3428,13 +3466,20 @@ camera.lookAt(0, 2, -10);
   const pos = new Float32Array(N * 3);
   const seed = [];
   for (let i = 0; i < N; i++) {
-    const x = rand(-20, 20), z = rand(-26, 12);
+    let x = rand(-20, 20), z = rand(-26, 12);
+    while (x > -10.5 && x < 2.5 && z < -0.5) { x = rand(-20, 20); z = rand(-26, 12); } // not inside the house
     pos[i * 3] = x; pos[i * 3 + 1] = rand(0.4, 2.6); pos[i * 3 + 2] = z;
     seed.push({ x, z, ph: rand(0, 9), sp: rand(0.3, 0.8) });
   }
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const fcv = document.createElement('canvas'); fcv.width = fcv.height = 32;
+  const fc = fcv.getContext('2d');
+  const fg = fc.createRadialGradient(16, 16, 1, 16, 16, 15);
+  fg.addColorStop(0, 'rgba(255,255,220,1)'); fg.addColorStop(0.4, 'rgba(216,255,138,0.6)'); fg.addColorStop(1, 'rgba(216,255,138,0)');
+  fc.fillStyle = fg; fc.fillRect(0, 0, 32, 32);
   firefliesRef = new THREE.Points(geo, new THREE.PointsMaterial({
-    color: 0xd8ff8a, size: 0.16, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+    color: 0xd8ff8a, size: 0.3, map: new THREE.CanvasTexture(fcv), transparent: true, opacity: 0,
+    depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
   }));
   firefliesRef.userData.seed = seed;
   scene.add(firefliesRef);
@@ -3458,12 +3503,17 @@ function updateDayNight(dt, now) {
   dayNight.dayF = Math.max(0, Math.min(1, (sunH + 0.12) / 0.3));
   dayNight.nightF = 1 - dayNight.dayF;
   const dF = dayNight.dayF, nF = dayNight.nightF;
-  // sun light
-  sun.position.set(Math.cos(az) * 60, Math.max(-8, sunH * 72), Math.sin(az) * 45 + 6);
+  // sun light — anchored to the player so its tight shadow frustum covers wherever you are
+  const sunDX = Math.cos(az) * 60, sunDY = Math.max(-8, sunH * 72), sunDZ = Math.sin(az) * 45 + 6;
+  const ax = player ? player.pos.x : 0, az2 = player ? player.pos.z : 0;
+  sun.position.set(ax + sunDX, sunDY, az2 + sunDZ);
+  sun.target.position.set(ax, 0, az2);
+  sun.target.updateMatrixWorld();
   const horizon = Math.max(0, 1 - Math.abs(sunH) * 3); // orange near sunrise/sunset
   sun.color.setRGB(1, 0.85 - horizon * 0.25 + dF * 0.05, 0.62 + dF * 0.28 - horizon * 0.2);
-  sun.intensity = 0.05 + dF * 1.55;
-  hemi.intensity = 0.2 + dF * 0.72;              // higher fill so shaded faces aren't black
+  sun.color.lerp(new THREE.Color(0.68, 0.76, 1.0), nF); // …and cool moonlight after dark
+  sun.intensity = 0.14 * nF + 0.05 + dF * 1.55;
+  hemi.intensity = 0.24 + dF * 0.68;             // higher fill so shaded faces aren't black
   hemi.color.setRGB(0.1 + dF * 0.52, 0.16 + dF * 0.6, 0.28 + dF * 0.62);
   hemi.groundColor.setRGB(0.05 + dF * 0.1, 0.08 + dF * 0.14, 0.05 + dF * 0.08);
   // sky dome + fog
@@ -3472,7 +3522,7 @@ function updateDayNight(dt, now) {
   scene.fog.color.setRGB(0.09 + dF * 0.62, 0.12 + dF * 0.66, 0.2 + dF * 0.52);
   // sun glow sprite
   if (sunGlowRef) {
-    sunGlowRef.position.copy(sun.position).normalize().multiplyScalar(230);
+    sunGlowRef.position.set(sunDX, sunDY, sunDZ).normalize().multiplyScalar(230);
     sunGlowRef.material.opacity = Math.max(0, dF - 0.1) + horizon * 0.5 * dF;
     sunGlowRef.scale.setScalar(85 + horizon * 40);
   }
@@ -3488,7 +3538,7 @@ function updateDayNight(dt, now) {
   if (porchLight) porchLight.intensity = nF * 1.5;
   for (const b of nightBulbMats) {
     if (b.lightRef) { b.lightRef.intensity = nF * 1.3; continue; } // street/porch point lights
-    if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF); }
+    if (b.window) { const e = b.m.emissive; e.setHex(b.base); e.multiplyScalar(nF * 0.72); }
     else { const tw = 0.6 + Math.sin(now * 0.006 + (b.twinkle || 0)) * 0.4; b.m.emissive.setHex(b.base); b.m.emissive.multiplyScalar(0.3 + nF * tw); }
   }
   renderer.toneMappingExposure = 1.0 + nF * 0.08; // tiny lift so night is moody, not black
@@ -4165,6 +4215,9 @@ function frame(now) {
   // the San Lorenzo actually flows (texture drift + a light cross-ripple)
   waterTex.offset.x -= dt * 0.05;
   waterTex.offset.y = Math.sin(now * 0.0005) * 0.03;
+  sparkleTex.offset.x += dt * 0.028;
+  sparkleTex.offset.y = Math.sin(now * 0.0007) * 0.02;
+  sparkleMat.opacity = 0.08 + dayNight.dayF * 0.26; // glints belong to the sun
   updateAmbience(dt, now);
   updateConfetti(dt);
   updateBubbles(dt);
