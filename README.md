@@ -66,6 +66,19 @@ not controlling wanders around living their best chaotic life.
 
 Finish all five to complete a round — then it gets harder.
 
+## 🏠 Act III — Come On In
+
+Walk up to the front door and **🚪 Go inside** — the whole interior is
+built from the real photos: the entry and dining room under the antler
+chandelier, the white galley kitchen with the skylight and breakfast
+nook, the double-height great room with the river-rock fireplace and
+window wall, Liam's room, and a real staircase up to the loft — game
+room (break at the pool table, crash the drums, play the piano), the
+blue primary suite (nap to skip time) and its stone bathroom with the
+barn door. Fire up the espresso machine, raid the fridge, watch TV,
+then slip out the patio doors to the backyard and **soak in the hot
+tub**. Four new achievements live indoors.
+
 ## 🗺️ Act II — Greater Felton
 
 - **Downtown Felton** along Hwy 9: a little main street (Felton Coffee, Felton Market, the Trading Post) with a boardwalk and street lamps that glow at night.
@@ -85,7 +98,7 @@ The world is full of stuff too: bounce on the in-ground trampoline, kick the
 soccer ball, skip stones on the San Lorenzo, make s'mores at the campfire,
 honk the Mini, check the mail, knock on the front door, chase the squirrel,
 spot the deer, and find **Greg the Golden Slug** hiding deep in the forest.
-There are 23 achievements to unlock.
+There are 27 achievements to unlock.
 
 ## Controls
 
