@@ -1865,7 +1865,7 @@ function buildPerson(cfg) {
   const legH = h * 0.46, torsoH = h * 0.31;
   const hipW = h * 0.072;
   const parts = {};
-  const skinM = pmat(cfg.skin, { roughness: 0.7 });
+  const skinM = pmat(cfg.skin, { roughness: 0.55, envMapIntensity: 0.55 });
   const clothM = pmat(cfg.shirt, cfg.leather ? { roughness: 0.45, metalness: 0.15 } : {});
   const pantsM = pmat(cfg.pants);
   const hairM = pmat(cfg.hair, { roughness: 0.65 });
@@ -1911,6 +1911,32 @@ function buildPerson(cfg) {
     hand.position.y = -armLen;
     a.add(hand);
     g.add(a);
+    if (a === parts.lArm) parts.lHand = hand; else parts.rHand = hand;
+  }
+  if (cfg.ring) { // the engagement ring, of course
+    const band = new THREE.Mesh(new THREE.TorusGeometry(h * 0.028, h * 0.006, 6, 12), pmat(0xe8e4da, { roughness: 0.15, metalness: 0.95 }));
+    band.rotation.x = Math.PI / 2;
+    band.position.y = h * 0.01;
+    parts.lHand.add(band);
+    const gem = sph(h * 0.011, pmat(0xf4faff, { roughness: 0.05, metalness: 0.3, envMapIntensity: 1.4 }), 8, 6);
+    gem.position.set(0, h * 0.01, h * 0.03);
+    parts.lHand.add(gem);
+  }
+  if (cfg.leather) { // jacket details: open collar, zipper line, white tee
+    const collM = pmat(0x1a1816, { roughness: 0.4, metalness: 0.2 });
+    for (const s of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(h * 0.05, h * 0.085, h * 0.02), collM);
+      lapel.position.set(s * h * 0.055, legH + torsoH * 0.92, h * 0.075);
+      lapel.rotation.z = s * 0.5;
+      g.add(lapel);
+    }
+    const tee = sph(h * 0.075, pmat(0xf0eee8, { roughness: 0.8 }), 10, 8);
+    tee.scale.set(1.1, 0.9, 0.55);
+    tee.position.set(0, legH + torsoH * 0.82, h * 0.055);
+    g.add(tee);
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(h * 0.008, torsoH * 0.72, h * 0.004), pmat(0x8a8e92, { roughness: 0.3, metalness: 0.8 }));
+    zip.position.set(h * 0.035, legH + torsoH * 0.42, h * 0.083);
+    g.add(zip);
   }
   // neck
   const neck = cyl(R * 0.32, R * 0.36, R * 0.5, cfg.skin, 0, legH + torsoH + R * 0.1, 0, g, 10);
@@ -1936,18 +1962,34 @@ function buildPerson(cfg) {
     const white = sph(R * 0.155, pmat(0xffffff, { roughness: 0.35 }), 12, 10);
     white.scale.set(1, 1, 0.55);
     eyeG.add(white);
-    const iris = sph(R * 0.082, pmat(cfg.eyes, { roughness: 0.3 }), 10, 8);
+    const iris = sph(R * 0.082, pmat(cfg.eyes, { roughness: 0.12, envMapIntensity: 1 }), 10, 8);
     iris.position.z = R * 0.11;
     eyeG.add(iris);
-    const pupil = sph(R * 0.038, pmat(0x14100c, { roughness: 0.25 }), 8, 6);
+    const pupil = sph(R * 0.038, pmat(0x14100c, { roughness: 0.1 }), 8, 6);
     pupil.position.z = R * 0.165;
     eyeG.add(pupil);
+    const spark = sph(R * 0.016, pmat(0xffffff, { roughness: 0.05, envMapIntensity: 1.5 }), 6, 5); // catchlight
+    spark.position.set(-R * 0.035, R * 0.04, R * 0.19);
+    eyeG.add(spark);
+    // lash line along the upper lid (reads as real eyes at any distance)
+    const lash = new THREE.Mesh(new THREE.TorusGeometry(R * 0.15, R * (cfg.liner ? 0.026 : 0.016), 5, 10, Math.PI * 0.9),
+      pmat(cfg.liner ? 0x141210 : 0x2e241c, { roughness: 0.4 }));
+    lash.rotation.z = (Math.PI - Math.PI * 0.9) / 2;
+    lash.position.set(0, R * 0.035, R * 0.09);
+    eyeG.add(lash);
+    if (cfg.liner) { // the winged eyeliner from the selfie
+      const wing = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.02, R * 0.14, 4, 6), pmat(0x141210, { roughness: 0.4 }));
+      wing.rotation.z = Math.PI / 2 - s * 0.6;
+      wing.position.set(s * R * 0.19, R * 0.08, R * 0.05);
+      eyeG.add(wing);
+    }
     headG.add(eyeG);
     parts.eyes.push(eyeG);
-    // eyebrow
-    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.035, R * 0.3, 4, 8), hairM);
-    brow.rotation.z = Math.PI / 2 + s * 0.12;
-    brow.position.set(s * R * 0.33, R * 0.36, R * 0.92);
+    // eyebrow — heavier for Eric, slimmer + arched for Jessy
+    const browR = R * (cfg.browHeavy ? 0.05 : cfg.liner ? 0.026 : 0.035);
+    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(browR, R * 0.3, 4, 8), cfg.brow ? pmat(cfg.brow, { roughness: 0.7 }) : hairM);
+    brow.rotation.z = Math.PI / 2 + s * (cfg.liner ? 0.2 : 0.12);
+    brow.position.set(s * R * 0.33, R * (cfg.liner ? 0.38 : 0.36), R * 0.92);
     headG.add(brow);
   }
   // nose
@@ -1955,14 +1997,25 @@ function buildPerson(cfg) {
   nose.scale.set(0.75, 1, 0.85);
   nose.position.set(0, -R * 0.05, R * 1.0);
   headG.add(nose);
-  // smiling mouth (arc)
-  const mouth = new THREE.Mesh(
-    new THREE.TorusGeometry(R * 0.22, R * 0.038, 6, 14, Math.PI * 0.85),
-    pmat(cfg.lips || 0x9c5a4a, { roughness: 0.55 })
-  );
-  mouth.rotation.z = Math.PI + (Math.PI - Math.PI * 0.85) / 2; // arc opens upward = smile
-  mouth.position.set(0, -R * 0.34, cfg.beard ? R * 1.04 : R * 0.96);
-  headG.add(mouth);
+  if (cfg.lips) { // sculpted glossy lips (the selfie's soft smile)
+    const lipM = pmat(cfg.lips, { roughness: 0.12, envMapIntensity: 0.9 });
+    const upper = sph(R * 0.15, lipM, 12, 8);
+    upper.scale.set(1.55, 0.42, 0.55);
+    upper.position.set(0, -R * 0.32, R * 0.9);
+    headG.add(upper);
+    const lower = sph(R * 0.15, lipM, 12, 8);
+    lower.scale.set(1.3, 0.55, 0.62);
+    lower.position.set(0, -R * 0.42, R * 0.9);
+    headG.add(lower);
+  } else {
+    const mouth = new THREE.Mesh(
+      new THREE.TorusGeometry(R * 0.2, R * 0.03, 6, 14, Math.PI * 0.85),
+      pmat(0x9c5a4a, { roughness: 0.5 })
+    );
+    mouth.rotation.z = Math.PI + (Math.PI - Math.PI * 0.85) / 2; // arc opens upward = smile
+    mouth.position.set(0, -R * 0.34, cfg.beard ? R * 1.04 : R * 0.96);
+    headG.add(mouth);
+  }
   // hair styles (smooth, rounded)
   if (cfg.style === 'short') {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.04, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.52), hairM);
@@ -1970,26 +2023,39 @@ function buildPerson(cfg) {
     cap.rotation.x = -0.42; // hairline up in front
     cap.castShadow = true;
     headG.add(cap);
-  } else if (cfg.style === 'long') {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.06, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.58), hairM);
-    cap.rotation.x = -0.3;
+  } else if (cfg.style === 'long') { // Jessy: long chestnut waves, side-swept, sun-lightened strands
+    const hairHi = pmat(0x7a563a, { roughness: 0.6 });
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
+    cap.rotation.x = -0.28;
     cap.castShadow = true;
     headG.add(cap);
-    const back = sph(R * 0.9, hairM, 16, 12);
-    back.scale.set(1.15, 1.7, 0.8);
-    back.position.set(0, -R * 0.55, -R * 0.5);
+    const back = sph(R * 0.95, hairM, 16, 12); // full fall of hair down the back
+    back.scale.set(1.15, 2.05, 0.8);
+    back.position.set(0, -R * 0.75, -R * 0.5);
     headG.add(back);
-    for (const s of [-1, 1]) { // long side locks
-      const lock = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.24, R * 1.5, 6, 10), hairM);
-      lock.position.set(s * R * 0.82, -R * 0.75, R * 0.15);
-      lock.rotation.z = s * 0.12;
-      headG.add(lock);
+    for (const s of [-1, 1]) { // wavy side falls: stacked lobes that swing in and out
+      for (let seg = 0; seg < 4; seg++) {
+        const wave = sph(R * (0.3 - seg * 0.03), seg % 2 ? hairHi : hairM, 10, 8);
+        wave.position.set(
+          s * R * (0.82 + Math.sin(seg * 1.9) * 0.14),
+          R * 0.1 - seg * R * 0.52,
+          R * (0.18 - seg * 0.05)
+        );
+        wave.scale.set(1, 1.35, 0.9);
+        headG.add(wave);
+      }
     }
-    const bangs = sph(R * 0.55, hairM, 12, 10); // side-swept bangs
-    bangs.scale.set(1.5, 0.5, 0.7);
-    bangs.position.set(-R * 0.25, R * 0.62, R * 0.62);
-    bangs.rotation.z = 0.35;
+    // side-swept bangs crossing from her part toward her left
+    const bangs = sph(R * 0.58, hairM, 12, 10);
+    bangs.scale.set(1.55, 0.48, 0.72);
+    bangs.position.set(-R * 0.22, R * 0.6, R * 0.64);
+    bangs.rotation.z = 0.42;
     headG.add(bangs);
+    const bangHi = sph(R * 0.3, hairHi, 10, 8); // lighter strand in the sweep
+    bangHi.scale.set(1.3, 0.32, 0.6);
+    bangHi.position.set(-R * 0.42, R * 0.52, R * 0.7);
+    bangHi.rotation.z = 0.45;
+    headG.add(bangHi);
   } else if (cfg.style === 'ponytail') {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.56), hairM);
     cap.rotation.x = -0.35;
@@ -2123,23 +2189,29 @@ function buildPerson(cfg) {
       headG.add(cheek);
     }
   }
-  if (cfg.noseStud) { // Jessy's nose ring
-    const stud = sph(R * 0.04, pmat(0xd4c088, { roughness: 0.2, metalness: 0.9 }), 8, 6);
-    stud.position.set(R * 0.13, -R * 0.1, R * 0.99);
+  if (cfg.noseStud) { // Jessy's gold stud — her left nostril, like the selfie
+    const stud = sph(R * 0.036, pmat(0xe0b84f, { roughness: 0.12, metalness: 1, envMapIntensity: 1.3 }), 8, 6);
+    stud.position.set(-R * 0.14, -R * 0.09, R * 0.98);
     headG.add(stud);
   }
-  if (cfg.beard) { // trimmed beard hugging the jaw + mustache
+  if (cfg.beard) { // full trimmed beard: jaw band + chin volume + connected mustache
     const beard = new THREE.Mesh(
-      new THREE.SphereGeometry(R * 1.02, 20, 12, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.33),
+      new THREE.SphereGeometry(R * 1.03, 20, 12, 0, Math.PI * 2, Math.PI * 0.52, Math.PI * 0.36),
       hairM
     );
-    beard.scale.set(0.96, 1.05, 0.99);
+    beard.scale.set(0.97, 1.08, 1);
     beard.position.y = -R * 0.02;
     headG.add(beard);
-    const stache = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.055, R * 0.28, 4, 8), hairM);
-    stache.rotation.z = Math.PI / 2;
-    stache.position.set(0, -R * 0.18, R * 0.99);
-    headG.add(stache);
+    const chin = sph(R * 0.42, hairM, 12, 9);
+    chin.scale.set(1.15, 0.8, 0.7);
+    chin.position.set(0, -R * 0.72, R * 0.62);
+    headG.add(chin);
+    for (const s of [-1, 1]) { // mustache halves angling down to meet the beard
+      const st = new THREE.Mesh(new THREE.CapsuleGeometry(R * 0.055, R * 0.18, 4, 8), hairM);
+      st.rotation.z = Math.PI / 2 + s * 0.35;
+      st.position.set(s * R * 0.13, -R * 0.2, R * 0.95);
+      headG.add(st);
+    }
   }
   g.add(headG);
   parts.headG = headG;
@@ -2175,10 +2247,10 @@ function buildPerson(cfg) {
 }
 
 const CHARS = [
-  { id: 'eric',  name: 'Eric',  h: 1.82, skin: 0xc98d63, shirt: 0x23211f, sleeve: 0x23211f, pants: 0x2e3440, hair: 0x1d1712, eyes: 0x4a3520, style: 'short', beard: true, leather: true, labelColor: '#ffd166', speed: 6.6, jump: 7.2,
+  { id: 'eric',  name: 'Eric',  h: 1.82, skin: 0xc98d63, shirt: 0x23211f, sleeve: 0x23211f, pants: 0x2e3440, hair: 0x1d1712, eyes: 0x4a3520, style: 'short', beard: true, leather: true, browHeavy: true, labelColor: '#ffd166', speed: 6.6, jump: 7.2,
     tag: 'Dad · Powered by coffee & dad jokes',
     quips: ['Has anyone seen my coffee? It was RIGHT here.', 'I’m not sleeping, I’m checking my eyelids for holes.', 'Who wants to help me rake 40 billion redwood needles?', 'Grill’s hot. Dad mode: ACTIVATED.'] },
-  { id: 'jessy', name: 'Jessy', h: 1.7, skin: 0xe8b48f, shirt: 0xf26f21, sleeve: 0xf26f21, pants: 0x35507a, hair: 0x5a3d28, eyes: 0x7aa05c, style: 'long', lips: 0xc96a7a, noseStud: true, labelColor: '#ff9f6b', speed: 6.9, jump: 7.2,
+  { id: 'jessy', name: 'Jessy', h: 1.7, skin: 0xe8b48f, shirt: 0xf26f21, sleeve: 0xf26f21, pants: 0x35507a, hair: 0x543822, eyes: 0x93b06e, style: 'long', lips: 0xd0808e, noseStud: true, liner: true, brow: 0x3a2a1c, ring: true, labelColor: '#ff9f6b', speed: 6.9, jump: 7.2,
     tag: 'Mom · Can hear a snack wrapper from 3 rooms away',
     quips: ['I found a banana slug in someone’s shoe. AGAIN.', 'If it’s quiet for more than 2 minutes, I panic.', 'Yes I counted the kids. Twice. We still have four.', 'Whoever drew on the wall… nice shading, but NO.'] },
   { id: 'liam',  name: 'Liam',  h: 1.68, skin: 0xe4b58e, shirt: 0xa9c1cf, sleeve: 0xa9c1cf, pants: 0x33383f, hair: 0x7a5535, eyes: 0x76909e, style: 'curly', glasses: true, fuzz: true, headphones: true, blush: true, labelColor: '#a9d4e8', speed: 7.6, jump: 7.6,
