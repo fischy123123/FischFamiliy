@@ -317,7 +317,23 @@ const henryCowell = {}, trainPlatform = {}, nightSky = {}, calendar = {};
 const colliders = []; // {type:'box',minX,maxX,minZ,maxZ} | {type:'circle',x,z,r}
 function addBoxCollider(minX, maxX, minZ, maxZ) { colliders.push({ type: 'box', minX, maxX, minZ, maxZ }); }
 function addCircleCollider(x, z, r) { colliders.push({ type: 'circle', x, z, r }); }
+const INT = { on: false };
+const INTCOLL = []; // interior walls/furniture: {minX,maxX,minZ,maxZ, minY?,maxY?}
+function collideInt(pos, radius) {
+  for (const c of INTCOLL) {
+    if (c.minY !== undefined && (pos.y < c.minY || pos.y > c.maxY)) continue;
+    const cx = Math.max(c.minX, Math.min(pos.x, c.maxX));
+    const cz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
+    const dx = pos.x - cx, dz = pos.z - cz;
+    const d = Math.hypot(dx, dz);
+    if (d < radius) {
+      if (d > 0.0001) { pos.x = cx + dx / d * radius; pos.z = cz + dz / d * radius; }
+      else pos.z = c.maxZ + radius;
+    }
+  }
+}
 function collide(pos, radius) {
+  if (pos.x > 270) { collideInt(pos, radius); return; } // indoors: interior walls, no world edge
   for (const c of colliders) {
     if (c.disabled) continue;
     if (c.type === 'circle') {
@@ -1083,6 +1099,20 @@ woodSign(23.6, 17.5, -Math.PI / 2 - 0.12, ['SANTA CRUZ', 'REDWOODS', 'RV RESORT'
     g.add(blade);
   }
   addCircleCollider(14.6, -38.4, 0.3);
+})();
+
+// ---- backyard: paver patio + the hot tub under the redwoods (from the photos) ----
+(function backyard() {
+  const pav = new THREE.MeshStandardMaterial({ map: paverTex, bumpMap: paverTex, bumpScale: 0.02, roughness: 0.95, metalness: 0, color: 0xb8b0a2 });
+  const patio = box(4.4, 0.07, 13.5, 0xb8b0a2, -11.1, 0.04, -11.2);
+  patio.material = pav; patio.castShadow = false;
+  const g = new THREE.Group(); g.position.set(-11.6, 0, -16.2); scene.add(g);
+  const shell = cyl(1.15, 1.05, 0.75, 0xe8e6e0, 0, 0.38, 0, g, 8);
+  const wat = new THREE.Mesh(new THREE.CircleGeometry(0.95, 16), new THREE.MeshPhongMaterial({ map: waterTex, transparent: true, opacity: 0.9, shininess: 80, specular: 0x9fc3d0 }));
+  wat.rotation.x = -Math.PI / 2; wat.position.y = 0.72; g.add(wat);
+  box(0.6, 0.08, 0.3, 0x2e3134, 1.05, 0.72, 0, g); // control panel
+  addCircleCollider(-11.6, -16.2, 1.35);
+  blobs.push({ x: -11.6, z: -16.2, r: 1.6 });
 })();
 
 // ---- Hwy 9 ambient traffic: locals headed for Felton or Santa Cruz ----
@@ -2188,11 +2218,14 @@ let player = null; // set at intro
 // ---------- Movement ----------
 const GRAV = -22;
 // walkable raised surfaces (jump rock etc.) — you land on them only from above
-const PLATFORMS = []; // {x, z, r, y}
+const PLATFORMS = []; // {x, z, r, y} circles or {minX, maxX, minZ, maxZ, y} rects
 function groundYAt(ch) {
   let gy = 0;
   for (const p of PLATFORMS) {
-    if (ch.pos.y >= p.y - 0.3 && Math.hypot(ch.pos.x - p.x, ch.pos.z - p.z) < p.r) gy = Math.max(gy, p.y);
+    if (ch.pos.y < p.y - 0.3) continue;
+    if (p.r !== undefined) {
+      if (Math.hypot(ch.pos.x - p.x, ch.pos.z - p.z) < p.r) gy = Math.max(gy, p.y);
+    } else if (ch.pos.x > p.minX && ch.pos.x < p.maxX && ch.pos.z > p.minZ && ch.pos.z < p.maxZ) gy = Math.max(gy, p.y);
   }
   return gy;
 }
@@ -2587,6 +2620,10 @@ const ACH_LIST = {
   zipline: '🚡 Canopy Flyer — rode the redwood zipline',
   timetrial: '🏁 Trailblazer — finished a time trial',
   weather: '🌫️ Marine Layer — saw the fog roll in',
+  inside: '🏠 Home Sweet Home — stepped inside 110 River Ln',
+  rack: '🎱 Corner Pocket — broke at the pool table',
+  tunes: '🎹 Forest Recital — played the piano',
+  soak: '🛁 Prune Mode — soaked in the hot tub',
 };
 const ach = { unlocked: {}, bounceStreak: 0, hifived: {} };
 function achCount() { return Object.keys(ach.unlocked).length; }
@@ -2889,7 +2926,14 @@ const MAIL_LINES = [
 ];
 const objectActions = [
   { key: 'mail', label: '📬 Check mail', near: p => Math.hypot(p.x - 14.9, p.z + 17) < 2.2, fn() { toast(MAIL_LINES[Math.floor(rand(0, MAIL_LINES.length))], 3.5); blip(); award('mail'); } },
-  { key: 'door', label: '🚪 Knock', near: p => Math.hypot(p.x - 1.5, p.z + 11.2) < 2.4, fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — everyone inside, in perfect unison', 3), 700); } },
+  { key: 'door', label: '🚪 Go inside', near: p => Math.hypot(p.x - 1.5, p.z + 11.2) < 2.4, fn() { goInside(false); },
+    extra: { label: '✊ Knock', fn() { tone(130, 0.08, 'triangle', 0.12); tone(120, 0.08, 'triangle', 0.12, 0.18); setTimeout(() => toast('🚪 “IT’S OPEN!” — just walk in, you live here', 3), 700); } } },
+  { key: 'backdoor', label: '🚪 In through the patio doors', near: p => Math.hypot(p.x + 10.5, p.z + 8) < 2, fn() { goInside(true); } },
+  { key: 'hottub', label: '🛁 Soak in the hot tub', near: p => Math.hypot(p.x + 11.6, p.z + 16.2) < 2, fn() {
+    award('soak'); score += 3;
+    tone(rand(350, 500), 0.3, 'sine', 0.05); tone(rand(250, 380), 0.35, 'sine', 0.04, 0.3);
+    say(player, ['Ahhhh. Prune mode: engaged. 🛁', 'This is where I live now.', 'Someone bring me a lemonade.'][Math.floor(rand(0, 3))], 3);
+  } },
   { key: 'fire', label: '🍫 Make s’more', near: p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 2.8, fn() { score += 3; blip(); say(player, ['Perfectly toasted. I am a s’mores sommelier.', 'Crispy outside, molten core. Chef’s kiss.', 'One for me, zero for sharing.'][Math.floor(rand(0, 3))], 3); award('smore'); } },
   { key: 'river', label: '🪨 Skip a stone', near: p => p.z > 23 && p.z < 27.4, fn() { skipStone(); } },
   { key: 'jumprock', label: '🧗 Climb the jump rock',
@@ -2942,6 +2986,11 @@ function updateInteractions() {
   if (ACT2.zip.atTop) { setActions('ziptop', [{ label: '🚀 Zip!', fn: rideZip }, { label: '🪜 Climb down', fn: climbDown }]); return; }
   if (ACT2.fishing.active) { setActions('fishhold', []); return; } // fishing bar handles it
   if (ACT2.trial.active) { setActions('trialrun', [{ label: '🏳️ Quit trial', fn: () => endTrial(false) }]); return; }
+  if (player && player.pos.x > 270) { // indoors: room-by-room interactions
+    const hits = INTERIOR_POIS.filter(a => a.near(player.pos)).slice(0, 3);
+    setActions('int:' + hits.map(h => h.label).join(), hits);
+    return;
+  }
   if (player) {
     if (Math.hypot(player.pos.x - ACT2.dock.x, player.pos.z - (ACT2.dock.z + 2.5)) < 3) {
       setActions('dock', [{ label: '🎣 Fish', fn: startFishing }]); return;
@@ -2970,7 +3019,7 @@ function updateInteractions() {
     return;
   }
   for (const o of objectActions) {
-    if (o.near(player.pos)) { setActions('obj:' + o.key, [o]); return; }
+    if (o.near(player.pos)) { setActions('obj:' + o.key, o.extra ? [o, o.extra] : [o]); return; }
   }
   setActions('none', []);
 }
@@ -3545,6 +3594,8 @@ function updateDayNight(dt, now) {
   if (bloomPass) bloomPass.strength = 0.22 + nF * 0.33; // lamps, windows and fire glow at night
   const shaftF = Math.pow(dF, 1.6) * (ACT2.weather === 0 ? 1 : ACT2.weather === 1 ? 0.35 : 0);
   for (const s of shaftMats) s.m.opacity = s.base * shaftF;
+  for (const l of intLights) l.li.intensity = l.base * (0.55 + nF * 1.15); // lamps carry the rooms at night
+  for (const v of intViews) v.color.setRGB(0.25 + dF * 0.75, 0.28 + dF * 0.72, 0.38 + dF * 0.62);
 }
 
 // ---- Flashlight + fireflies motion (called each frame) ----
@@ -3560,7 +3611,7 @@ function updateNightFX(dt, now) {
     }
     firefliesRef.geometry.attributes.position.needsUpdate = true;
   }
-  const onFoot = player && !car.occupied && !RIDE.riding && !photo.on;
+  const onFoot = player && !car.occupied && !RIDE.riding && !photo.on && player.pos.x < 270;
   if (flashlight) {
     const want = (onFoot && dayNight.nightF > 0.4) ? 1.6 * dayNight.nightF : 0;
     flashlight.intensity += (want - flashlight.intensity) * Math.min(1, dt * 6);
@@ -4152,6 +4203,575 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyF' && ACT2.fishing.active) reelIn();
 });
 
+// ============================================================
+//  INSIDE 110 RIVER LANE — a walk-in interior built from the
+//  family's photos: entry/dining, kitchen + nook, the great room
+//  with the river-rock fireplace, Liam's room, and upstairs the
+//  game room, primary suite and stone bathroom. Lives in its own
+//  pocket of space (x≈300) behind the real front door.
+// ============================================================
+const intLights = [];  // {li, base} warm lamps, brighter after dark
+const intViews = [];   // window-view materials, dimmed at night
+const fans = [];       // spinning ceiling fans
+let hearth = null;     // fireplace flicker
+(function buildInterior() {
+  const IL = { minX: 288, maxX: 301.5 }; // footprint reference
+  // ---- palettes & textures ----
+  const laminateTex = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#6e5138'; c.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 32) {
+      for (let x = -64; x < w; x += 128) {
+        c.fillStyle = ['#7a5b40', '#66492f', '#836548', '#5d4229'][Math.floor(rand(0, 4))];
+        c.fillRect(x + (y / 32 % 2) * 64, y, 126, 30);
+      }
+    }
+    c.globalAlpha = 0.25; c.strokeStyle = '#4a3320';
+    for (let i = 0; i < 120; i++) { const x = rand(0, w), y = rand(0, h); c.beginPath(); c.moveTo(x, y); c.lineTo(x + rand(8, 30), y); c.stroke(); }
+    c.globalAlpha = 1;
+  }, 3, 3);
+  const carpetGreenTex = canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#5e7a5d'; c.fillRect(0, 0, w, h);
+    speckle(c, w, h, ['#6e8a6d', '#4e6a4e', '#7e9a7d', '#3e5a3f'], 900, 1, 3);
+  }, 6, 6);
+  const carpetCreamTex = canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#cfc7b8'; c.fillRect(0, 0, w, h);
+    speckle(c, w, h, ['#dbd4c6', '#c2b9a8'], 500, 1, 3);
+  }, 6, 6);
+  const stoneTex = canvasTex(256, 512, (c, w, h) => {
+    c.fillStyle = '#8a7a64'; c.fillRect(0, 0, w, h); // river-rock chimney
+    for (let i = 0; i < 90; i++) {
+      c.fillStyle = ['#a89272', '#7d6a52', '#b8a488', '#6a5a46', '#93805f', '#c0ac8c'][i % 6];
+      c.strokeStyle = '#57493a'; c.lineWidth = 3;
+      const x = rand(0, w), y = rand(0, h), r = rand(14, 34);
+      c.beginPath(); c.ellipse(x, y, r, r * rand(0.6, 0.9), rand(0, 3), 0, 7); c.fill(); c.stroke();
+    }
+  }, 1, 2);
+  const tileTex = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#7a746a'; c.fillRect(0, 0, w, h); // grey wood-look bath tile
+    for (let y = 0; y < h; y += 28) for (let x = -40; x < w; x += 90) {
+      c.fillStyle = ['#847d72', '#6e675c', '#8f887c', '#635c52'][Math.floor(rand(0, 4))];
+      c.fillRect(x + (y / 28 % 2) * 45, y, 88, 26);
+    }
+  }, 3, 3);
+  const rugBWTex = canvasTex(256, 192, (c, w, h) => {
+    c.fillStyle = '#e8e2d4'; c.fillRect(0, 0, w, h); // the black & white dining rug
+    c.strokeStyle = '#26303c'; c.lineWidth = 7; c.lineCap = 'square';
+    for (let i = 0; i < 26; i++) {
+      const x = rand(10, w - 10), y = rand(10, h - 10), l = rand(18, 44);
+      c.beginPath();
+      if (i % 3 === 0) { c.moveTo(x - l / 2, y); c.lineTo(x + l / 2, y); c.moveTo(x, y - 9); c.lineTo(x, y + 9); }
+      else if (i % 3 === 1) { c.moveTo(x, y - l / 2); c.lineTo(x, y + l / 2); }
+      else { c.moveTo(x - l / 2, y); c.lineTo(x + l / 2, y); }
+      c.stroke();
+    }
+    c.strokeStyle = '#26303c'; c.lineWidth = 5; c.strokeRect(6, 6, w - 12, h - 12);
+  }, 1, 1);
+  const rugWarmTex = canvasTex(256, 160, (c, w, h) => {
+    c.fillStyle = '#c9a67e'; c.fillRect(0, 0, w, h); // living-room kilim
+    for (let y = 8; y < h; y += 22) {
+      c.fillStyle = ['#b3495a', '#d8798a', '#8a5a9a', '#e0c28e'][Math.floor(y / 22) % 4];
+      for (let x = 0; x < w; x += 24) { c.beginPath(); c.moveTo(x, y + 9); c.lineTo(x + 12, y); c.lineTo(x + 24, y + 9); c.lineTo(x + 12, y + 18); c.closePath(); c.fill(); }
+    }
+  }, 1, 1);
+  const viewTex = canvasTex(256, 160, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h); // sunlit canopy out every window
+    g.addColorStop(0, '#dcecf2'); g.addColorStop(0.3, '#b5d49a'); g.addColorStop(1, '#44603a');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 60; i++) { // soft leafy blobs, brighter up top
+      const y = rand(10, h);
+      c.fillStyle = ['#6e9a56', '#547a42', '#86b268', '#3e5c32', '#a3c886'][i % 5];
+      c.globalAlpha = rand(0.25, 0.6);
+      c.beginPath(); c.ellipse(rand(0, w), y, rand(12, 30), rand(8, 20), rand(0, 3), 0, 7); c.fill();
+    }
+    c.globalAlpha = 0.5; // a few trunk hints low down
+    c.fillStyle = '#5c4632';
+    for (let i = 0; i < 5; i++) c.fillRect(rand(0, w), rand(h * 0.55, h * 0.75), rand(4, 8), h * 0.45);
+    c.globalAlpha = 1;
+  }, 1, 1);
+  const granite2 = canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#cfc8bc'; c.fillRect(0, 0, w, h);
+    speckle(c, w, h, ['#8a8074', '#b5aa98', '#5e564c', '#e2dcd0'], 800, 0.5, 3);
+  }, 2, 2);
+  const wallCol = 0xb6b0a8, wallBlue = 0x8fa5c2, ceilCol = 0xf2efe8;
+  const woodTrim = mat(0x6e4f33);
+  const whiteCab = mat(0xf0ede6);
+  const viewMat = new THREE.MeshBasicMaterial({ map: viewTex });
+  intViews.push(viewMat);
+
+  // ---- helpers ----
+  function wall(cx, cy, cz, w, h, ry, color, noColl, yGate, dbl) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+      new THREE.MeshLambertMaterial({ color, side: dbl ? THREE.DoubleSide : THREE.FrontSide }));
+    p.position.set(cx, cy, cz); p.rotation.y = ry;
+    scene.add(p);
+    if (!noColl) {
+      const alongX = Math.abs(Math.sin(ry)) < 0.5; // wall runs along x?
+      const c = alongX
+        ? { minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - 0.12, maxZ: cz + 0.12 }
+        : { minX: cx - 0.12, maxX: cx + 0.12, minZ: cz - w / 2, maxZ: cz + w / 2 };
+      if (yGate) { c.minY = yGate[0]; c.maxY = yGate[1]; }
+      INTCOLL.push(c);
+    }
+    return p;
+  }
+  function ibox(w, h, d, m, x, y, z, coll) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    b.position.set(x, y, z); b.castShadow = false; b.receiveShadow = true; scene.add(b);
+    if (coll) INTCOLL.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, minY: coll[0], maxY: coll[1] });
+    return b;
+  }
+  function view(cx, cy, cz, w, h, ry) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), viewMat);
+    p.position.set(cx, cy, cz); p.rotation.y = ry; scene.add(p);
+    // simple wood frame
+    const fm = woodTrim;
+    const horiz = Math.abs(Math.sin(ry)) < 0.5;
+    const t = 0.08;
+    for (const s of [-1, 1]) {
+      const e1 = new THREE.Mesh(new THREE.BoxGeometry(horiz ? w + t : t, t, horiz ? t : w + t), fm);
+      e1.position.set(cx, cy + s * h / 2, cz); scene.add(e1);
+      const e2 = new THREE.Mesh(new THREE.BoxGeometry(horiz ? t : t, h, horiz ? t : t), fm);
+      e2.position.set(cx + (horiz ? s * w / 2 : 0), cy, cz + (horiz ? 0 : s * w / 2)); scene.add(e2);
+    }
+  }
+  function lamp(x, y, z, color, range, base) {
+    const li = new THREE.PointLight(color || 0xffd9a8, 0.5, range || 8, 1.4);
+    li.position.set(x, y, z); scene.add(li);
+    intLights.push({ li, base: base || 0.5 });
+    return li;
+  }
+
+  // ---- floors ----
+  const lamMat = new THREE.MeshStandardMaterial({ map: laminateTex, roughness: 0.55, metalness: 0.05, envMapIntensity: 0.25 });
+  function floorPlane(x0, x1, z0, z1, m, y) {
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), m);
+    f.rotation.x = -Math.PI / 2;
+    f.position.set((x0 + x1) / 2, y || 0.01, (z0 + z1) / 2);
+    f.receiveShadow = true; scene.add(f);
+    return f;
+  }
+  floorPlane(288, 301.5, 293, 302.5, lamMat);                    // great room + dining
+  floorPlane(296, 301.5, 291.5, 297, lamMat);                    // kitchen
+  floorPlane(288, 296, 288, 293, new THREE.MeshLambertMaterial({ map: carpetCreamTex })); // Liam's room
+
+  // ---- perimeter walls (single plane, DoubleSide keeps it simple; camera mostly stays inside) ----
+  // west window wall of the great room: mullions + big forest panes, two rows
+  for (let i = 0; i < 4; i++) {
+    const z0 = 293.6 + i * 2.2;
+    view(288.06, 1.5, z0 + 0.95, 1.9, 1.9, Math.PI / 2);
+    view(288.06, 3.7, z0 + 0.95, 1.9, 1.6, Math.PI / 2);
+  }
+  for (let i = 0; i <= 4; i++) ibox(0.16, 5.6, 0.24, woodTrim, 288.05, 2.8, 293.5 + i * 2.25);
+  ibox(0.16, 0.3, 9.5, woodTrim, 288.05, 2.7, 297.75);
+  INTCOLL.push({ minX: 287.8, maxX: 288.2, minZ: 288, maxZ: 302.5 }); // whole west face
+  wall(288, 5.35, 297.75, 9.5, 1.5, Math.PI / 2, wallCol, true);      // header above windows
+  wall(288, 2.8, 290.5, 5, 5.6, Math.PI / 2, 0xf4f2ec, true);         // Liam west (collider above)
+  wall(294.75, 2.8, 288, 2.5, 5.6, 0, 0xf4f2ec, true); wall(290, 2.8, 288, 4, 5.6, 0, 0xf4f2ec, true); // north perim + window gap
+  INTCOLL.push({ minX: 288, maxX: 296, minZ: 287.8, maxZ: 288.2 });
+  view(292.25, 1.7, 288.06, 2, 1.4, 0);
+  wall(292.25, 4.2, 288, 2.1, 2.8, 0, 0xf4f2ec, true);
+  wall(296, 2.8, 289.5, 3, 5.6, Math.PI / 2, 0xf4f2ec, false, null, true); // Liam east wall (door gap z 291..292.2)
+  wall(296, 2.8, 292.6, 0.8, 5.6, Math.PI / 2, 0xf4f2ec, false, null, true);
+  wall(298.75, 2.8, 291.5, 5.5, 5.6, 0, wallCol);                     // kitchen north (sink window)
+  view(298.7, 1.75, 291.56, 2.2, 1.1, 0);
+  wall(301.5, 2.8, 294.25, 5.5, 5.6, -Math.PI / 2, wallCol);          // kitchen east
+  view(301.44, 1.6, 293.6, 1.8, 1.5, -Math.PI / 2);                   // nook window
+  view(301.44, 4.1, 294.3, 2, 1.6, -Math.PI / 2);                     // game room arch window (visual)
+  // east wall of dining, with the real front door gap
+  wall(301.5, 2.8, 297.85, 1.7, 5.6, -Math.PI / 2, wallCol);
+  wall(301.5, 2.8, 301.75, 1.5, 5.6, -Math.PI / 2, wallCol);
+  wall(301.5, 4.35, 300, 2, 2.5, -Math.PI / 2, wallCol, true);        // header over door
+  INTCOLL.push({ minX: 301.3, maxX: 301.7, minZ: 298.6, maxZ: 301.1 }); // invisible screen door
+  // the oval-glass front door, standing open against the wall
+  (function frontDoorIn() {
+    const d = ibox(0.1, 2.4, 1.2, new THREE.MeshLambertMaterial({ map: plankTex, color: 0xa87848 }), 301.2, 1.2, 298.6, [0, 2.2]);
+    const ov = new THREE.Mesh(new THREE.CircleGeometry(0.24, 14), glassMat);
+    ov.scale.y = 1.5; ov.position.set(301.08, 1.45, 298.6); ov.rotation.y = -Math.PI / 2; scene.add(ov);
+  })();
+  wall(294.75, 2.8, 302.5, 13.5, 5.6, Math.PI, wallCol);              // south perimeter
+  view(297.4, 1.7, 302.44, 1.7, 1.6, Math.PI);                        // dining window
+  // patio french doors (south wall of great room) — you can walk out
+  for (const dx of [289.45, 290.35]) { // glazed doors, always ajar
+    const fr = ibox(0.86, 2.3, 0.1, woodTrim, dx, 1.15, 302.42);
+    const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 1.9), viewMat);
+    gl.position.set(dx, 1.25, 302.36); scene.add(gl);
+  }
+
+  // ---- interior partitions (ground) ----
+  wall(295.1, 1.42, 293, 1.8, 2.85, 0, wallCol, false, [-1, 2.6])    // G north wall bits beside fireplace
+  wall(290.35, 1.42, 293, 0.7, 2.85, 0, wallCol, false, [-1, 2.6])
+  // upstairs south wall of primary suite sits on top
+  wall(292, 4.22, 293, 8, 2.75, 0, wallBlue, false, [2.6, 9])
+  // dining/great-room divider with wide opening
+  wall(296, 1.42, 296.9, 1.4, 2.85, Math.PI / 2, wallCol, false, [-1, 2.6])
+  wall(296, 1.42, 302, 1, 2.85, Math.PI / 2, wallCol, false, [-1, 2.6])
+  // dining/kitchen divider
+  wall(296.6, 1.42, 297, 1.2, 2.85, 0, wallCol, false, [-1, 2.6])
+  wall(300.45, 1.42, 297, 2.1, 2.85, 0, wallCol, false, [-1, 2.6])
+
+  // ---- upstairs slabs (visible from below as ceilings) + platforms ----
+  function slab(x0, x1, z0, z1, topMat) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.18, z1 - z0), lamMat);
+    b.position.set((x0 + x1) / 2, 2.76, (z0 + z1) / 2); scene.add(b);
+    if (topMat) floorPlane(x0, x1, z0, z1, topMat, 2.86);
+    PLATFORMS.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, y: 2.85 });
+  }
+  slab(297.35, 301.5, 291.5, 297, new THREE.MeshLambertMaterial({ map: carpetGreenTex })); // game room (east of stair)
+  slab(296, 297.35, 291.5, 293.55, new THREE.MeshLambertMaterial({ map: carpetGreenTex }));
+  slab(296, 301.5, 297, 302.5, null);                                                     // loft hall (wood)
+  slab(288, 296, 288, 293, new THREE.MeshLambertMaterial({ map: carpetCreamTex }));        // primary + bath
+  // upper ceilings
+  (function ceilings() {
+    const cm = new THREE.MeshLambertMaterial({ color: ceilCol, side: THREE.DoubleSide });
+    for (const [x0, x1, z0, z1, y] of [[296, 301.5, 291.5, 302.5, 5.55], [288, 296, 288, 293, 5.55]]) {
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), cm);
+      p.rotation.x = Math.PI / 2; p.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); scene.add(p);
+    }
+    // plank ceiling over the great room with dark beams (like the photos)
+    const pm = new THREE.MeshLambertMaterial({ map: plankTex, color: 0xd8b98c, side: THREE.DoubleSide });
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(8.2, 9.6), pm);
+    p.rotation.x = Math.PI / 2; p.position.set(292, 5.95, 297.75); scene.add(p);
+    const bm = mat(0x4a3421);
+    for (let i = 0; i < 4; i++) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.3, 0.22), bm);
+      b.position.set(292, 5.78, 294.2 + i * 2.35); scene.add(b);
+    }
+  })();
+
+  // ---- the staircase (real, walkable) ----
+  (function stairs() {
+    const sm = new THREE.MeshLambertMaterial({ map: plankTex, color: 0xc09868 });
+    for (let i = 1; i <= 10; i++) {
+      const z = 296.62 - i * 0.29, y = i * 0.285;
+      const st = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.1, 0.3), sm);
+      st.position.set(296.67, y - 0.05, z); scene.add(st);
+      const riser = new THREE.Mesh(new THREE.BoxGeometry(1.25, y, 0.06), mat(0xf0ede6));
+      riser.position.set(296.67, y / 2 - 0.03, z + 0.15); scene.add(riser);
+      PLATFORMS.push({ minX: 296.05, maxX: 297.3, minZ: z - 0.16, maxZ: z + 0.14, y });
+    }
+    // rails
+    for (const rx of [296.08, 297.28]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 3.1), woodTrim);
+      rail.position.set(rx, 2.35, 295.1); rail.rotation.x = -0.75; scene.add(rail);
+    }
+    INTCOLL.push({ minX: 295.9, maxX: 296.15, minZ: 293.4, maxZ: 296.7 });   // void-side stair wall
+    INTCOLL.push({ minX: 297.2, maxX: 297.45, minZ: 293.4, maxZ: 296.7, minY: 0.2, maxY: 9 });
+    // loft railings overlooking the great room
+    function railing(x0, x1, z0, z1) {
+      const n = Math.max(2, Math.round(Math.hypot(x1 - x0, z1 - z0) / 0.45));
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.85, 0.06), woodTrim);
+        p.position.set(x0 + (x1 - x0) * t, 3.3, z0 + (z1 - z0) * t); scene.add(p);
+      }
+      const top = new THREE.Mesh(new THREE.BoxGeometry(Math.max(Math.abs(x1 - x0), 0.09), 0.09, Math.max(Math.abs(z1 - z0), 0.09)), woodTrim);
+      top.position.set((x0 + x1) / 2, 3.75, (z0 + z1) / 2); scene.add(top);
+      INTCOLL.push({ minX: Math.min(x0, x1) - 0.1, maxX: Math.max(x0, x1) + 0.1, minZ: Math.min(z0, z1) - 0.1, maxZ: Math.max(z0, z1) + 0.1, minY: 2.4, maxY: 9 });
+    }
+    railing(296.05, 296.05, 297.1, 302.4); // hall overlook
+    railing(296.05, 296.05, 291.6, 293.4); // game-room edge by the stair top
+  })();
+
+  // ================= DINING / ENTRY =================
+  (function dining() {
+    const rug = floorPlane(297, 301, 298.2, 301.6, new THREE.MeshLambertMaterial({ map: rugBWTex }), 0.02);
+    const wood = new THREE.MeshLambertMaterial({ map: plankTex, color: 0xc9a06a });
+    ibox(2.6, 0.09, 1.15, wood, 298.9, 0.78, 299.9, [0, 1.2]);          // farmhouse table
+    for (const [lx, lz] of [[297.8, 299.4], [300, 299.4], [297.8, 300.4], [300, 300.4]])
+      ibox(0.12, 0.74, 0.12, wood, lx, 0.37, lz);
+    for (const bz of [299.05, 300.75]) ibox(2.3, 0.45, 0.34, wood, 298.9, 0.32, bz); // benches
+    // antler chandelier
+    const ant = mat(0xd8c5a4);
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), ant); hub.position.set(298.9, 2.45, 299.9); scene.add(hub);
+    cyl(0.02, 0.02, 0.5, 0x6e5138, 298.9, 2.75, 299.9, null, 5);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.5, 5), ant);
+      seg1.position.set(298.9 + Math.cos(a) * 0.28, 2.42, 299.9 + Math.sin(a) * 0.28);
+      seg1.rotation.z = Math.cos(a) * 1.2; seg1.rotation.x = -Math.sin(a) * 1.2; scene.add(seg1);
+      const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.03, 0.3, 5), ant);
+      tip.position.set(298.9 + Math.cos(a) * 0.52, 2.58, 299.9 + Math.sin(a) * 0.52);
+      tip.rotation.z = Math.cos(a) * 0.5; tip.rotation.x = -Math.sin(a) * 0.5; scene.add(tip);
+    }
+    const bulbM = new THREE.MeshLambertMaterial({ color: 0xfff2cc, emissive: 0xb8862f });
+    for (let i = 0; i < 4; i++) {
+      const a = i / 4 * Math.PI * 2 + 0.4;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), bulbM);
+      b.position.set(298.9 + Math.cos(a) * 0.34, 2.52, 299.9 + Math.sin(a) * 0.34); scene.add(b);
+    }
+    lamp(298.9, 2.3, 299.9, 0xffd9a8, 9, 0.6);
+    // plant + mirror + floor lamp
+    ibox(0.22, 0.18, 0.22, mat(0xe8e4da), 298.9, 0.92, 299.9);
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.16, 7, 6), mat(0x3e6a35)); leaf.position.set(298.9, 1.1, 299.9); scene.add(leaf);
+    const mir = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.5), new THREE.MeshLambertMaterial({ color: 0xc8d4da, emissive: 0x2a3438 }));
+    mir.position.set(298.4, 2, 302.44); mir.rotation.y = Math.PI; scene.add(mir);
+  })();
+
+  // ================= KITCHEN + NOOK =================
+  (function kitchen() {
+    const granMat = new THREE.MeshStandardMaterial({ map: granite2, roughness: 0.35, metalness: 0.1, envMapIntensity: 0.35 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.35, metalness: 0.8, envMapIntensity: 0.5 });
+    const backTex = new THREE.MeshLambertMaterial({ map: tileTex, color: 0xd8cfc0 });
+    // north run: sink + dishwasher + counters
+    ibox(4.6, 0.9, 0.62, whiteCab, 298.9, 0.45, 291.95, [0, 1.2]);
+    ibox(4.7, 0.06, 0.68, granMat, 298.9, 0.93, 291.96);
+    ibox(4.6, 0.8, 0.06, backTex, 298.9, 1.45, 291.62);
+    const sink = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.4), mat(0x8a8e92)); sink.position.set(298.7, 0.94, 291.95); scene.add(sink);
+    const fauc = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.025, 6, 10, Math.PI), mat(0x2e2e30)); fauc.position.set(298.7, 1.06, 291.8); scene.add(fauc);
+    ibox(0.66, 0.72, 0.06, steel, 300.1, 0.42, 292.29); // dishwasher front
+    // east run: range + microwave + uppers
+    ibox(0.62, 0.9, 3.4, whiteCab, 301.15, 0.45, 294.6, [0, 1.2]);
+    ibox(0.68, 0.06, 3.5, granMat, 301.16, 0.93, 294.6);
+    const range = ibox(0.66, 0.94, 0.78, steel, 301.12, 0.47, 295.5);
+    for (const [bx, bz] of [[301, 295.25], [301, 295.75], [300.85, 295.25], [300.85, 295.75]]) {
+      const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 10), mat(0x1c1c1e));
+      burner.position.set(bx, 0.96, bz); scene.add(burner);
+    }
+    ibox(0.5, 0.5, 0.8, steel, 301.28, 2.05, 295.5); // microwave
+    ibox(0.55, 0.75, 2.2, whiteCab, 301.3, 2.2, 293.4); // uppers with glass front
+    const glassFront = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.6), new THREE.MeshLambertMaterial({ color: 0x9fb2bc, emissive: 0x1e262a, transparent: true, opacity: 0.7 }));
+    glassFront.position.set(301, 2.2, 293.4); glassFront.rotation.y = -Math.PI / 2; scene.add(glassFront);
+    // fridge (NW of kitchen by Liam's wall)
+    ibox(0.85, 1.9, 0.75, steel, 296.55, 0.95, 292, [0, 2]);
+    ibox(0.04, 0.7, 0.06, mat(0x8a8e92), 296.98, 1.15, 291.8);
+    // espresso machine — Eric's altar
+    ibox(0.3, 0.32, 0.3, mat(0x62666a), 297.5, 1.09, 291.95);
+    // washer + dryer niche by the stairs
+    for (const wz of [296.1, 296.75]) { /* compact laundry visual */ }
+    ibox(0.6, 0.85, 0.6, steel, 296.4, 0.43, 296.2, [0, 1]);
+    ibox(0.6, 0.85, 0.6, steel, 296.4, 0.43, 296.85, [0, 1]);
+    // skylight with wood grid
+    const sky = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.2), new THREE.MeshBasicMaterial({ color: 0xfdf8ea }));
+    sky.rotation.x = Math.PI / 2; sky.position.set(299.3, 5.5, 294.3); scene.add(sky);
+    intViews.push(sky.material);
+    for (const gx of [-0.5, 0, 0.5]) { const g = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 1.25), woodTrim); g.position.set(299.3 + gx, 5.48, 294.3); scene.add(g); }
+    lamp(299, 2.5, 294.4, 0xfff0d8, 8, 0.55);
+    // breakfast nook: table + 4 chairs with red cushions
+    const nw = new THREE.MeshLambertMaterial({ map: plankTex, color: 0xb08a58 });
+    ibox(1.1, 0.06, 1.1, nw, 299.9, 0.74, 293.6, [0, 0.9]);
+    for (const [lx, lz] of [[299.5, 293.2], [300.3, 293.2], [299.5, 294], [300.3, 294]]) ibox(0.08, 0.72, 0.08, nw, lx, 0.36, lz);
+    for (const [cx2, cz2, ry] of [[299.9, 292.8, 0], [299.9, 294.4, Math.PI], [299.1, 293.6, Math.PI / 2], [300.7, 293.6, -Math.PI / 2]]) {
+      ibox(0.42, 0.06, 0.42, nw, cx2, 0.46, cz2);
+      ibox(0.4, 0.05, 0.4, mat(0xa8323e), cx2, 0.5, cz2);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.06), nw);
+      back.position.set(cx2 - Math.sin(ry) * 0.19, 0.75, cz2 - Math.cos(ry) * 0.19); back.rotation.y = ry; scene.add(back);
+    }
+  })();
+
+  // ================= GREAT ROOM =================
+  (function greatRoom() {
+    floorPlane(290, 294.6, 295.4, 300.6, new THREE.MeshLambertMaterial({ map: rugWarmTex }), 0.02);
+    // river-rock fireplace to the vault
+    const stone = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, metalness: 0, envMapIntensity: 0.2 });
+    ibox(3.3, 5.9, 0.7, stone, 292.4, 2.95, 293.05, [0, 9]);
+    ibox(3.9, 0.34, 1.15, stone, 292.4, 0.17, 293.35, [0, 0.6]);
+    const insert = ibox(1.5, 1.1, 0.2, mat(0x17171a), 292.4, 0.85, 293.44);
+    const fbox = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0.9 }));
+    fbox.position.set(292.4, 0.8, 293.56); scene.add(fbox);
+    hearth = new THREE.PointLight(0xff8a3c, 0.8, 7, 1.5);
+    hearth.position.set(292.4, 1, 294); scene.add(hearth);
+    ibox(2.6, 0.12, 0.34, woodTrim, 292.4, 2.15, 293.5); // mantel
+    const art = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.85), new THREE.MeshLambertMaterial({ map: canvasTex(64, 48, (c, w, h) => {
+      c.fillStyle = '#e8d8a8'; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < 14; i++) { c.fillStyle = ['#4a7a4e', '#c9a03a', '#8a4a3e', '#3e5a8a'][i % 4]; c.globalAlpha = 0.8; c.fillRect(rand(0, w), rand(0, h), rand(6, 20), rand(6, 16)); }
+    }) }));
+    art.position.set(292.4, 3.1, 293.42); scene.add(art);
+    // burgundy leather sofas + driftwood glass table + green chair (photos)
+    const leather = new THREE.MeshStandardMaterial({ color: 0x451219, roughness: 0.45, metalness: 0.05, envMapIntensity: 0.25 });
+    function sofa(cx, cz, ry, len) {
+      const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = ry; scene.add(g);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(len, 0.42, 0.95), leather); seat.position.y = 0.35; g.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(len, 0.55, 0.28), leather); back.position.set(0, 0.82, -0.36); g.add(back);
+      for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.95), leather); arm.position.set(s * (len / 2 - 0.12), 0.72, 0); g.add(arm); }
+      INTCOLL.push({ minX: cx - len / 2, maxX: cx + len / 2, minZ: cz - 0.6, maxZ: cz + 0.6, minY: -1, maxY: 1.4 });
+    }
+    sofa(292.3, 297.1, Math.PI, 2.3);
+    sofa(289.6, 298.9, Math.PI / 2, 2.1);
+    const chair = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.7), mat(0x5a7a58)); chair.position.set(294.4, 0.45, 297.6); scene.add(chair);
+    INTCOLL.push({ minX: 294.05, maxX: 294.75, minZ: 297.25, maxZ: 297.95, minY: -1, maxY: 1.2 });
+    const drift = new THREE.Mesh(new THREE.SphereGeometry(0.3, 7, 5), mat(0xb59a72)); drift.scale.y = 0.9; drift.position.set(292.3, 0.3, 298.6); scene.add(drift);
+    const glassTop = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.04, 18), new THREE.MeshStandardMaterial({ color: 0xbfd4d8, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.2 }));
+    glassTop.position.set(292.3, 0.62, 298.6); scene.add(glassTop);
+    INTCOLL.push({ minX: 291.7, maxX: 292.9, minZ: 298, maxZ: 299.2, minY: -1, maxY: 1 });
+    // TV console under the loft
+    ibox(1.7, 0.4, 0.4, woodTrim, 295.7, 0.2, 300.9, [0, 0.6]);
+    const tv = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), new THREE.MeshLambertMaterial({ color: 0x14161a, emissive: 0x0a121e }));
+    tv.position.set(295.65, 1.15, 300.9); tv.rotation.y = -Math.PI / 2; scene.add(tv);
+    // plants by the window wall
+    for (const pz of [294.2, 301.6]) {
+      ibox(0.3, 0.35, 0.3, mat(0xa8654f), 288.6, 0.18, pz);
+      const pl = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 6), mat(0x3e6a35)); pl.position.set(288.6, 0.62, pz); scene.add(pl);
+    }
+    lamp(292.3, 4.6, 297.7, 0xffe4bc, 12, 0.5);
+  })();
+
+  // ================= LIAM'S ROOM =================
+  (function liamRoom() {
+    // bed with the blue tufted headboard
+    ibox(1.35, 0.4, 2, mat(0xd8d4c8), 294.9, 0.32, 290.4, [0, 0.8]);
+    ibox(1.45, 1, 0.14, mat(0x2a3f8a), 294.9, 0.85, 289.35);
+    ibox(0.55, 0.12, 0.35, mat(0xfdfcf8), 294.9, 0.56, 289.7);
+    // corner desk + monitor + chair (Liam HQ)
+    ibox(1.7, 0.06, 0.55, woodTrim, 289, 0.72, 288.5, [0, 0.9]);
+    ibox(0.55, 0.06, 1.4, woodTrim, 288.4, 0.72, 289.2, [0, 0.9]);
+    const mon = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.35), new THREE.MeshLambertMaterial({ color: 0x10141c, emissive: 0x16324a }));
+    mon.position.set(289, 1.1, 288.4); scene.add(mon);
+    ibox(0.4, 0.45, 0.4, mat(0x2c2c30), 289.1, 0.25, 289.3);
+    // wardrobe
+    ibox(1.1, 1.9, 0.5, new THREE.MeshLambertMaterial({ map: plankTex, color: 0xa87848 }), 292.2, 0.95, 288.35, [0, 2]);
+    floorPlane(292.8, 295.6, 289.8, 292.2, new THREE.MeshLambertMaterial({ map: rugWarmTex }), 0.02);
+    lamp(292, 2.5, 290.5, 0xfff0d8, 7, 0.4);
+  })();
+
+  // ================= UPSTAIRS: GAME ROOM =================
+  (function gameRoom() {
+    const felt = mat(0x2e7a4e);
+    const wood = new THREE.MeshLambertMaterial({ map: plankTex, color: 0x8a5a34 });
+    ibox(2.1, 0.22, 1.15, wood, 299.4, 3.62, 294.2, [2.85, 4.4]);
+    ibox(1.9, 0.05, 0.95, felt, 299.4, 3.76, 294.2);
+    for (const [lx, lz] of [[298.55, 293.75], [300.25, 293.75], [298.55, 294.65], [300.25, 294.65]])
+      ibox(0.16, 0.72, 0.16, wood, lx, 3.21, lz);
+    // balls + stained-glass light
+    const cols = [0xf2c14e, 0xd8442e, 0x2a3f8a, 0x111111, 0xffffff];
+    for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(cols[i])); b.position.set(299.2 + (i % 3) * 0.12, 3.83, 294 + Math.floor(i / 3) * 0.14); scene.add(b); }
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 0.25, 8), new THREE.MeshLambertMaterial({ color: 0x3e7a52, emissive: 0x1e3a28 }));
+    shade.position.set(299.4, 4.75, 294.2); scene.add(shade);
+    lamp(299.4, 4.55, 294.2, 0xd8ffe0, 6, 0.5);
+    // bar rail + stools
+    ibox(1.6, 0.95, 0.35, wood, 300.6, 3.32, 296.6, [2.85, 4]);
+    for (const sx of [300.2, 301]) { const st = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.16, 0.5, 8), mat(0x4a2e22)); st.position.set(sx, 3.35, 296.1); scene.add(st); }
+    // drum kit + guitars + piano along the north wall
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.35, 12), mat(0xd8d4c8)); drum.rotation.z = Math.PI / 2; drum.position.set(297.9, 3.2, 292); scene.add(drum);
+    const snare = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 10), mat(0xb8b4a8)); snare.position.set(298.35, 3.3, 292.2); scene.add(snare);
+    for (const cx2 of [297.6, 298.6]) { const cym = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.015, 12), mat(0xc9a03a)); cym.position.set(cx2, 3.6, 292.05); scene.add(cym); cyl(0.015, 0.015, 0.75, 0x2e2e30, cx2, 3.22, 292.05, null, 5); }
+    for (const gx of [299.4, 299.75]) { const gtr = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.62, 0.08), mat(gx > 299.5 ? 0xa8542e : 0x2e2e34)); gtr.position.set(gx, 3.3, 291.8); gtr.rotation.x = -0.12; scene.add(gtr); }
+    ibox(1.2, 0.3, 0.35, mat(0x1c1c20), 300.7, 3.55, 291.85, [2.85, 4]); // digital piano
+    ibox(1.1, 0.04, 0.3, mat(0xf4f2ec), 300.7, 3.72, 291.87);
+    ibox(0.7, 0.28, 0.3, wood, 300.7, 3, 292.4);
+    // chalkboard + ceiling fan
+    const chalk = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.8), mat(0x1e2a22)); chalk.position.set(297.5, 4.1, 296.9); chalk.rotation.y = Math.PI; scene.add(chalk);
+    const fan = new THREE.Group(); fan.position.set(299.4, 5.3, 293); scene.add(fan);
+    for (let i = 0; i < 4; i++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 0.16), wood); bl.position.set(Math.cos(i * Math.PI / 2) * 0.55, 0, Math.sin(i * Math.PI / 2) * 0.55); bl.rotation.y = -i * Math.PI / 2; fan.add(bl); }
+    const fhub = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat(0xc9a03a)); fan.add(fhub);
+    fans.push(fan);
+  })();
+
+  // ================= UPSTAIRS: PRIMARY + BATH =================
+  (function primarySuite() {
+    // blue walls
+    wall(296, 4.2, 289.95, 3.9, 2.7, Math.PI / 2, wallBlue, false, [2.6, 9], true); // east wall, doorway open z 291.9..293
+    wall(290.5, 4.2, 289.9, 2.6, 2.7, Math.PI / 2, wallBlue, false, [2.6, 9], true); // bath divider (barn gap z 291.2..292.3)
+    wall(290.5, 4.2, 292.7, 0.6, 2.7, Math.PI / 2, wallBlue, false, [2.6, 9], true);
+    // barn door on its rail
+    const barn = ibox(0.08, 2.1, 1.05, new THREE.MeshLambertMaterial({ map: plankTex, color: 0x9a6a3e }), 290.62, 3.95, 290.55);
+    ibox(0.05, 0.05, 2.4, mat(0x2e2e30), 290.6, 5.05, 291.2);
+    // bed with tall cream tufted headboard
+    ibox(1.6, 0.45, 2.05, mat(0xe8e2d4), 293.4, 3.12, 289.6, [2.85, 3.6]);
+    ibox(1.7, 1.15, 0.15, mat(0xdfd8c8), 293.4, 3.7, 288.55);
+    for (const px of [292.9, 293.9]) ibox(0.5, 0.12, 0.32, mat(0xc8ccd4), px, 3.4, 288.95);
+    for (const nx of [292.4, 294.4]) {
+      ibox(0.4, 0.45, 0.4, mat(0x3a3a40), nx, 3.08, 288.5, [2.85, 3.6]);
+      const lm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 0.16, 8), new THREE.MeshLambertMaterial({ color: 0xf4ead0, emissive: 0x8a6a2f }));
+      lm.position.set(nx, 3.45, 288.5); scene.add(lm);
+    }
+    lamp(293.4, 4.9, 290.3, 0xffe4c0, 8, 0.45);
+    // bench + dresser + arched window high on the wall
+    ibox(1.1, 0.3, 0.35, woodTrim, 293.4, 3, 291.2);
+    ibox(1, 0.9, 0.45, new THREE.MeshLambertMaterial({ map: plankTex, color: 0xa87848 }), 295.3, 3.3, 290.6, [2.85, 4.3]);
+    view(292.6, 4.9, 288.12, 1.3, 0.75, 0);
+    // ---- bath: rustic vanity, vessel sinks, tub, glass shower ----
+    floorPlane(288.15, 290.35, 288.15, 292.85, new THREE.MeshLambertMaterial({ map: tileTex }), 2.87);
+    const rustic = new THREE.MeshLambertMaterial({ map: plankTex, color: 0x7a4f2e });
+    ibox(1.5, 0.85, 0.5, rustic, 289.1, 3.28, 288.55, [2.85, 4.2]);
+    for (const sx of [288.7, 289.5]) { const vs = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), mat(0xfdfcf8)); vs.scale.y = 0.55; vs.position.set(sx, 3.78, 288.55); scene.add(vs); }
+    const bmir = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), new THREE.MeshLambertMaterial({ color: 0xc8d4da, emissive: 0x2a3438 })); bmir.position.set(289.1, 4.45, 288.18); scene.add(bmir);
+    ibox(1.3, 0.55, 0.75, mat(0xfdfcf8), 289, 3.13, 292.3, [2.85, 3.6]); // tub
+    ibox(1.1, 0.1, 0.55, mat(0xe8f2f4), 289, 3.42, 292.3);
+    // glass shower w/ pebble floor
+    const gl = new THREE.MeshStandardMaterial({ color: 0xcfe4e8, transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.1 });
+    for (const [gx, gz, gw, gr] of [[290, 290.6, 1, 0], [289.5, 290.1, 1, Math.PI / 2]]) {
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(gw, 2), gl); pane.position.set(gx, 3.95, gz); pane.rotation.y = gr; scene.add(pane);
+    }
+    const peb = new THREE.Mesh(new THREE.CircleGeometry(0.5, 12), new THREE.MeshLambertMaterial({ map: duffTex, color: 0xb8b4a8 }));
+    peb.rotation.x = -Math.PI / 2; peb.position.set(289.7, 2.88, 289.7); scene.add(peb);
+    cyl(0.02, 0.02, 0.5, 0x8a8e92, 289.7, 4.9, 289.35, null, 5);
+    lamp(289.3, 4.7, 290.5, 0xfff0d8, 6, 0.4);
+  })();
+
+  // ---- hall art (the colorful abstract) + french-door balcony view ----
+  const hart = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.8), new THREE.MeshLambertMaterial({ map: canvasTex(64, 48, (c, w, h) => {
+    c.fillStyle = '#2a3450'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 18; i++) { c.fillStyle = ['#d8442e', '#3a8ad8', '#e8c93a', '#7a3a9a', '#3ac98a'][i % 5]; c.globalAlpha = 0.85; c.beginPath(); c.moveTo(rand(0, w), rand(0, h)); c.lineTo(rand(0, w), rand(0, h)); c.lineTo(rand(0, w), rand(0, h)); c.closePath(); c.fill(); }
+  }) }));
+  hart.position.set(301.44, 4.3, 299.9); hart.rotation.y = -Math.PI / 2; scene.add(hart);
+  view(301.44, 4, 301.6, 1.4, 1.9, -Math.PI / 2); // balcony french doors (view only)
+  lamp(298.5, 4.9, 299.8, 0xffe4c0, 8, 0.4);
+})();
+
+// ---- doors in and out ----
+function setIntLights(on) {
+  for (const l of intLights) l.li.visible = on;
+  if (hearth) hearth.visible = on;
+}
+function goInside(spawn) {
+  if (!player) return;
+  dropFaylen();
+  INT.on = true;
+  setIntLights(true);
+  player.pos.set(spawn ? 289.9 : 300.6, 0, spawn ? 301.6 : 300.1);
+  player.vy = 0; player.heading = spawn ? 0.6 : -Math.PI / 2;
+  camYaw = spawn ? Math.PI + 0.5 : Math.PI / 2;
+  toast('🏠 Home sweet home. (The whole family is “about to come inside,” allegedly.)', 3);
+  award('inside');
+  blip();
+}
+function goOutside(back) {
+  INT.on = false;
+  setIntLights(false);
+  if (back) { player.pos.set(-10.8, 0, -8.2); player.heading = -Math.PI / 2; camYaw = Math.PI / 2 + 0.4; }
+  else { player.pos.set(3, 0, -11.2); player.heading = Math.PI / 2; camYaw = -Math.PI / 2; }
+  player.vy = 0;
+  blip();
+}
+setIntLights(false); // dark until someone walks in
+const INTERIOR_POIS = [
+  { label: '🚪 Go outside', near: p => Math.hypot(p.x - 300.9, p.z - 300.2) < 1.7, fn: () => goOutside(false) },
+  { label: '🌲 Out to the patio', near: p => p.y < 1 && Math.hypot(p.x - 289.9, p.z - 302) < 1.6, fn: () => goOutside(true) },
+  { label: '☕ Fire up the espresso', near: p => p.y < 1 && Math.hypot(p.x - 297.5, p.z - 292.2) < 1.4, fn() {
+    tone(220, 0.5, 'sawtooth', 0.05); tone(660, 0.3, 'sine', 0.04, 0.5);
+    player.buffT = 20; score += 2;
+    say(player, player === family[0] ? 'Dad power: MAXIMUM. ☕⚡' : 'Whoa. I can see through time. ☕', 3);
+  } },
+  { label: '🍪 Raid the fridge', near: p => p.y < 1 && Math.hypot(p.x - 296.6, p.z - 292.2) < 1.3, fn() {
+    player.buffT = 14; blip();
+    toast(['🍪 One (1) cookie. For balance.', '🧀 String cheese acquired. Power rising.', '🥕 A carrot?? Who put vegetables in here?'][Math.floor(rand(0, 3))], 3);
+  } },
+  { label: '🔥 Warm up by the fire', near: p => p.y < 1 && Math.hypot(p.x - 292.4, p.z - 294.3) < 1.6, fn() {
+    toast('🔥 Toasty. The rain can do its worst.', 2.5); tone(140, 0.4, 'triangle', 0.05);
+  } },
+  { label: '🎱 Break!', near: p => p.y > 2 && Math.hypot(p.x - 299.4, p.z - 294.9) < 1.6, fn() {
+    tone(880, 0.03, 'square', 0.09); tone(760, 0.03, 'square', 0.08, 0.05); tone(620, 0.04, 'square', 0.07, 0.11); tone(500, 0.05, 'square', 0.06, 0.18);
+    award('rack'); score += 3;
+    toast(['🎱 Clean break! Two in. Nobody saw the scratch.', '🎱 The cue ball flew off the table. Classic.', '🎱 8-ball first hit. We don’t talk about it.'][Math.floor(rand(0, 3))], 3);
+  } },
+  { label: '🎹 Play the piano', near: p => p.y > 2 && Math.hypot(p.x - 300.7, p.z - 292.3) < 1.3, fn() {
+    const notes = [262, 330, 392, 523, 392, 330, 262];
+    notes.forEach((n, i) => tone(n, 0.22, 'sine', 0.07, i * 0.16));
+    award('tunes'); score += 3;
+  } },
+  { label: '🥁 Crash the drums', near: p => p.y > 2 && Math.hypot(p.x - 298.1, p.z - 292.2) < 1.4, fn() {
+    tone(90, 0.15, 'sine', 0.12); tone(2400, 0.2, 'sawtooth', 0.03, 0.05); tone(70, 0.15, 'sine', 0.1, 0.22);
+    say(player, 'BAND PRACTICE!', 2);
+  } },
+  { label: '😴 Nap', near: p => p.y > 2 && Math.hypot(p.x - 293.4, p.z - 289.4) < 1.5, fn() {
+    cycleTimeOfDay();
+    toast('😴 Best nap of your life. Time did… something.', 3);
+  } },
+  { label: '📺 Watch TV', near: p => p.y < 1 && Math.hypot(p.x - 294.8, p.z - 300.4) < 1.5, fn() {
+    toast('📺 34 minutes of “what should we watch” later, everyone is asleep.', 3.2);
+  } },
+];
+
 // ---------- Main loop ----------
 let last = performance.now();
 frame.lastEnvF = 99; // force first-frame env pass
@@ -4212,6 +4832,8 @@ function frame(now) {
   updateSquirrel(dt);
   updateTrain(dt);
   updateTraffic(dt);
+  for (const f of fans) f.rotation.y += dt * 5;
+  if (hearth) hearth.intensity = 0.65 + Math.sin(now * 0.021) * 0.2 + Math.sin(now * 0.047) * 0.12;
   // the San Lorenzo actually flows (texture drift + a light cross-ripple)
   waterTex.offset.x -= dt * 0.05;
   waterTex.offset.y = Math.sin(now * 0.0005) * 0.03;
@@ -4252,7 +4874,8 @@ window.__act = { nightF: () => dayNight.nightF, driving: () => car.occupied, pho
   cycleWeather, startFishing, castLine, reelIn,
   atTop: () => ACT2.zip.atTop, trialT: () => ACT2.trial.t, startTrial, endTrial, climbZip, rideZip, enterCar, exitCar,
   carPos: () => car.g.position, carSpeed: () => car.speed, carCollider: () => colliders[car.colliderIndex], fxaa: () => !!fxaaPass, boardTrain, hopOffTrain,
-  traffic: () => traffic.map(c => ({ active: c.active, x: c.active ? +c.x.toFixed(1) : null, dir: c.dir })), trafficRaw: () => traffic };
+  traffic: () => traffic.map(c => ({ active: c.active, x: c.active ? +c.x.toFixed(1) : null, dir: c.dir })), trafficRaw: () => traffic,
+  goInside, goOutside, inside: () => INT.on };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
