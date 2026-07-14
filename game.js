@@ -26,7 +26,7 @@ scene.fog = new THREE.Fog(0xb5c8b2, 60, 240); // valley haze
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
 
 // cinematic post pipeline: real bloom + film grade + FXAA on the GPU (graceful fallback)
-let composer = null, bloomPass = null, fxaaPass = null;
+let composer = null, bloomPass = null, fxaaPass = null, gradePass = null;
 function fitFXAA() {
   if (!fxaaPass) return;
   const pr = Math.min(window.devicePixelRatio || 1, FINE ? 2 : 1.75);
@@ -41,24 +41,35 @@ function fitFXAA() {
   composer.addPass(bloom);
   bloomPass = bloom;
   const grade = new THREE.ShaderPass({
-    uniforms: { tDiffuse: { value: null } },
+    uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: [
-      'varying vec2 vUv; uniform sampler2D tDiffuse;',
+      'varying vec2 vUv; uniform sampler2D tDiffuse; uniform float uTime;',
+      'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)) + uTime) * 43758.5453); }',
       'void main(){',
-      '  vec4 c = texture2D(tDiffuse, vUv);',
-      '  float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));',
-      '  c.rgb = mix(vec3(l), c.rgb, 1.16);',                    // saturation
-      '  c.rgb = (c.rgb - 0.5) * 1.06 + 0.5;',                   // contrast
-      '  c.rgb += vec3(0.008, 0.012, 0.006);',                   // gentle green-tinted lift
       '  float d = distance(vUv, vec2(0.5));',
+      // whisper of chromatic aberration, growing toward the edges (lens feel)
+      '  vec2 off = (vUv - 0.5) * d * 0.0035;',
+      '  vec4 c = texture2D(tDiffuse, vUv);',
+      '  c.r = texture2D(tDiffuse, vUv - off).r;',
+      '  c.b = texture2D(tDiffuse, vUv + off).b;',
+      '  float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));',
+      '  c.rgb = mix(vec3(l), c.rgb, 1.17);',                    // saturation
+      // filmic S-curve: deeper shadows, protected highlights
+      '  c.rgb = c.rgb * c.rgb * (3.0 - 2.0 * c.rgb) * 0.55 + c.rgb * 0.45;',
+      // split tone: teal whisper in shadows, golden warmth in highlights
+      '  float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));',
+      '  c.rgb += (1.0 - smoothstep(0.0, 0.45, lum)) * vec3(-0.012, 0.006, 0.016);',
+      '  c.rgb += smoothstep(0.55, 1.0, lum) * vec3(0.02, 0.012, -0.008);',
       '  c.rgb *= 1.0 - smoothstep(0.45, 0.9, d) * 0.3;',        // vignette
       '  c.rgb = pow(max(c.rgb, 0.0), vec3(0.4545));',           // linear -> sRGB
+      '  c.rgb += (hash(vUv * 640.0) - 0.5) * 0.018;',           // fine animated film grain
       '  gl_FragColor = c;',
       '}',
     ].join('\n'),
   });
   composer.addPass(grade);
+  gradePass = grade;
   // composer renders to offscreen targets, so the canvas's MSAA never applies —
   // FXAA as the final pass brings antialiasing back
   if (THREE.FXAAShader) {
@@ -443,11 +454,32 @@ scene.add(ground);
   ridgeRing(148, 44, 12, 24, 0x415a47); // near forested ridge, mostly behind the treeline
   ridgeRing(200, 32, 24, 44, 0x7793a0); // far ridge dissolving into haze
 })();
-// needle-duff patches under the trees
-const duffMat = new THREE.MeshLambertMaterial({ map: duffTex });
+// needle-duff patches under the trees — soft radial edges so they melt into the floor
+const duffPatchTex = canvasTex(256, 256, (c, w, h) => {
+  c.clearRect(0, 0, w, h);
+  c.save();
+  c.beginPath(); c.arc(128, 128, 126, 0, 7); c.clip();
+  c.fillStyle = '#5d4b32'; c.fillRect(0, 0, w, h);
+  speckle(c, w, h, ['#6d5a3c', '#4a3a26', '#7a6644', '#54422b'], 700, 2, 8);
+  c.strokeStyle = '#4a3a26'; c.globalAlpha = 0.5;
+  for (let i = 0; i < 160; i++) {
+    const x = rand(0, w), y = rand(0, h), a = rand(0, 3);
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * 10, y + Math.sin(a) * 10); c.stroke();
+  }
+  c.restore();
+  c.globalAlpha = 1;
+  // feather the rim
+  c.globalCompositeOperation = 'destination-in';
+  const gr = c.createRadialGradient(128, 128, 40, 128, 128, 126);
+  gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.75, 'rgba(0,0,0,0.85)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = gr; c.fillRect(0, 0, w, h);
+  c.globalCompositeOperation = 'source-over';
+});
+duffPatchTex.repeat.set(1, 1);
+const duffMat = new THREE.MeshLambertMaterial({ map: duffPatchTex, transparent: true, depthWrite: false });
 for (let i = 0; i < 38; i++) {
   const duffR = rand(2, 7);
-  const p = new THREE.Mesh(new THREE.CircleGeometry(duffR, 22), duffMat);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(duffR * 2, duffR * 2), duffMat);
   p.rotation.x = -Math.PI / 2;
   p.rotation.z = rand(0, 9);
   let dx2 = rand(-80, 80), dz2 = rand(-80, 80);
@@ -515,9 +547,10 @@ for (const bz of [27.9, 38.1]) { // sandy banks
   bank.castShadow = false;
   bank.material = new THREE.MeshLambertMaterial({ map: duffTex, color: 0xc9b896 });
 }
+const riverRockMat = new THREE.MeshStandardMaterial({ color: 0x7d7b72, map: asphaltTex, bumpMap: asphaltTex, bumpScale: 0.04, roughness: 0.9, metalness: 0, envMapIntensity: 0.3 });
 for (let i = 0; i < 16; i++) { // river boulders
   const br = rand(0.3, 0.9);
-  const b = new THREE.Mesh(new THREE.SphereGeometry(br, 7, 5), mat(0x6e6d64));
+  const b = new THREE.Mesh(new THREE.SphereGeometry(br, 9, 7), riverRockMat);
   b.scale.y = 0.6;
   b.position.set(rand(-70, 70), 0.1, rand(28, 39));
   b.rotation.y = rand(0, 9);
@@ -793,7 +826,7 @@ function updateTrain(dt) {
 }
 
 // ---------- The Fisch House (brown/red chalet, twin gables, 2-car garage) ----------
-const WALL = 0x743828, TRIM = 0x3d251b, ROOFC = 0x4e3a2c, DOORC = 0x33221a;
+const WALL = 0x77402e, TRIM = 0x38231a, ROOFC = 0x4e3a2c, DOORC = 0x33221a;
 const sidingMat = new THREE.MeshStandardMaterial({ map: sidingTex, bumpMap: sidingTex, bumpScale: 0.05, roughness: 0.95, metalness: 0 });
 const shingleMat = new THREE.MeshStandardMaterial({ map: shingleTex, bumpMap: shingleTex, bumpScale: 0.06, roughness: 0.95, metalness: 0 });
 const plankMat = new THREE.MeshStandardMaterial({ map: plankTex, bumpMap: plankTex, bumpScale: 0.04, roughness: 0.9, metalness: 0 });
@@ -906,6 +939,50 @@ for (const gx of [-2.6, 2.6]) {
 }
 windowPane(garage, -2, 6, 4.62, 1.3, 1.4);
 windowPane(garage, 2, 6, 4.62, 1.3, 1.4);
+for (const gx of [-2, 2]) { // the arched tops those windows have in the photos
+  const arch = new THREE.Mesh(new THREE.CircleGeometry(0.66, 14, 0, Math.PI), glassMat);
+  arch.position.set(gx, 6.72, 4.63); garage.add(arch);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.09, 6, 12, Math.PI), mat(TRIM));
+  rim.position.set(gx, 6.72, 4.66); garage.add(rim);
+}
+// exposed rafter tails under the eaves + dark trim band between floors (both volumes)
+for (const [vol, eaveY, w2] of [[houseL, 5.35, 12], [garage, 4.85, 12]]) {
+  for (let rx = -w2 / 2 + 0.6; rx <= w2 / 2 - 0.4; rx += 0.85)
+    box(0.14, 0.14, 0.6, TRIM, rx, eaveY, 4.55, vol);
+  box(w2 + 0.1, 0.24, 0.1, TRIM, 0, 3.15, 4.58, vol); // mid-band
+}
+// broad chimney cap
+box(0.9, 0.18, 0.9, 0x6e7378, -6, 10.35, -9);
+// rear balcony over the backyard, with the rainbow hammock + string lights (photos)
+(function rearBalcony() {
+  const deck = box(1.7, 0.16, 4.6, 0x6b4a30, -9.4, 3.35, -7);
+  deck.material = new THREE.MeshStandardMaterial({ map: plankTex, bumpMap: plankTex, bumpScale: 0.04, roughness: 0.9, metalness: 0 });
+  for (const pz of [-9.1, -4.9]) {
+    box(0.14, 3.5, 0.14, TRIM, -10.1, 1.75, pz);           // posts to the ground
+    addCircleCollider(-10.1, pz, 0.2);
+    box(0.14, 1.0, 0.14, TRIM, -10.15, 3.95, pz);          // railing posts
+  }
+  for (let i = 0; i < 4; i++) box(0.07, 0.8, 0.07, TRIM, -10.15, 3.85, -8.6 + i * 1.1);
+  box(0.09, 0.09, 4.5, TRIM, -10.15, 4.4, -7);             // top rail
+  // rainbow hammock slung between the railing posts
+  const hamTex = canvasTex(64, 64, (c, w, h) => {
+    const cols = ['#d84a3a', '#e8a03a', '#e8d84a', '#4aa85a', '#3a6ac8', '#8a4ac8'];
+    for (let i = 0; i < 12; i++) { c.fillStyle = cols[i % 6]; c.fillRect(0, i * 6, w, 6); }
+  }, 1, 1);
+  const ham = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.6, 10, 1, true, Math.PI * 1.15, Math.PI * 0.7),
+    new THREE.MeshLambertMaterial({ map: hamTex, side: THREE.DoubleSide }));
+  ham.rotation.z = Math.PI / 2; ham.rotation.y = Math.PI / 2;
+  ham.position.set(-9.8, 4.05, -7); scene.add(ham);
+  // string lights swagged along the balcony (they twinkle after dark)
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xc9a24a });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), bm);
+    bulb.position.set(-10.2, 4.45 - Math.sin(t * Math.PI) * 0.35, -9.1 + t * 4.2);
+    scene.add(bulb);
+    nightBulbMats.push({ m: bm, base: 0xc9a24a, twinkle: i * 1.7 });
+  }
+})();
 // half-timber diagonals on the garage gable
 for (const s of [-1, 1]) {
   const t = box(0.22, 3.4, 0.1, TRIM, s * 3.4, 6.1, 4.66, garage);
@@ -1207,21 +1284,51 @@ function redwood(x, z, s) {
   addCircleCollider(x, z, 0.9 * s);
 }
 function buildFoliage() {
-  const geo = new THREE.SphereGeometry(1, 7, 5);
-  const inst = new THREE.InstancedMesh(geo,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 }), foliageXforms.length);
+  // a painted redwood branch spray — feathery sprays of flat needles, drawn once,
+  // instanced thousands of times as crossed cards. Reads like real canopy and is
+  // cheaper than the old sphere clusters (2 tris vs 70 per cluster).
+  const sprayTex = canvasTex(256, 256, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    const greens = ['#3d6631', '#2e5226', '#4c7a3c', '#24421e', '#5a8a48'];
+    for (let br = 0; br < 9; br++) { // branches radiating from bottom-center
+      const a = -Math.PI / 2 + (br - 4) * 0.34 + rand(-0.08, 0.08);
+      const len = rand(90, 120);
+      const bx = 128, by = 236;
+      c.strokeStyle = '#4a3822'; c.lineWidth = 2.4; c.globalAlpha = 0.9;
+      const tx = bx + Math.cos(a) * len, ty = by + Math.sin(a) * len;
+      c.beginPath(); c.moveTo(bx, by); c.lineTo(tx, ty); c.stroke();
+      for (let t = 0.12; t <= 1; t += 0.07) { // flat needle tufts along each branch
+        const px = bx + Math.cos(a) * len * t, py = by + Math.sin(a) * len * t;
+        c.fillStyle = greens[Math.floor(rand(0, greens.length))];
+        c.globalAlpha = rand(0.75, 1);
+        const s2 = (1.1 - t * 0.55) * rand(9, 15);
+        c.save(); c.translate(px, py); c.rotate(a + Math.PI / 2 + rand(-0.4, 0.4));
+        c.beginPath(); c.ellipse(0, 0, s2, s2 * 0.38, 0, 0, 7); c.fill();
+        c.restore();
+      }
+    }
+    c.globalAlpha = 1;
+  });
+  sprayTex.repeat.set(1, 1);
+  const geo = new THREE.PlaneGeometry(2.4, 2.4);
+  const m = new THREE.MeshLambertMaterial({ map: sprayTex, color: 0xffffff, alphaTest: 0.35, side: THREE.DoubleSide, transparent: false });
+  const inst = new THREE.InstancedMesh(geo, m, foliageXforms.length * 2);
+  // alpha-tested shadows so canopies cast dappled light, not solid squares
+  inst.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: sprayTex, alphaTest: 0.35 });
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   foliageXforms.forEach((f, i) => {
-    dummy.position.set(f.x, f.y, f.z);
-    dummy.rotation.set(rand(-0.15, 0.15), f.ry, rand(-0.15, 0.15));
-    if (f.spire) dummy.scale.set(f.s * 0.55, f.s * 1.5, f.s * 0.55);
-    else dummy.scale.set(f.s * 1.3, f.s * 0.45, f.s * 1.3);
-    dummy.updateMatrix();
-    inst.setMatrixAt(i, dummy.matrix);
-    col.setHex(f.c);
-    // subtle per-cluster light variation
-    col.offsetHSL(rand(-0.015, 0.015), rand(-0.05, 0.05), rand(-0.03, 0.03));
-    inst.setColorAt(i, col);
+    for (const rot of [0, Math.PI / 2]) {
+      dummy.position.set(f.x, f.y + (f.spire ? f.s * 0.5 : 0), f.z);
+      dummy.rotation.set(f.spire ? 0 : rand(-0.25, 0.25), f.ry + rot, f.spire ? 0 : rand(-0.2, 0.2));
+      const sc = f.spire ? f.s * 0.9 : f.s * 1.15;
+      dummy.scale.set(sc, sc, sc);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i * 2 + (rot ? 1 : 0), dummy.matrix);
+      col.setHex(f.c);
+      col.offsetHSL(rand(-0.015, 0.015), rand(-0.05, 0.05), rand(-0.04, 0.04));
+      col.multiplyScalar(1.55); // texture is dark; instance tint restores variation
+      inst.setColorAt(i * 2 + (rot ? 1 : 0), col);
+    }
   });
   inst.castShadow = true;
   inst.receiveShadow = true;
@@ -1374,10 +1481,15 @@ const shaftMats = [];
   }
 })();
 // rocks + a mossy fallen log
+const rockBumpTex = canvasTex(128, 128, (c, w, h) => {
+  c.fillStyle = '#8a887f'; c.fillRect(0, 0, w, h);
+  speckle(c, w, h, ['#a3a196', '#6e6c63', '#b5b3a8', '#57554e'], 700, 1, 5);
+}, 2, 2);
+const rockStdMat = new THREE.MeshStandardMaterial({ color: 0x8a887f, map: rockBumpTex, bumpMap: rockBumpTex, bumpScale: 0.05, roughness: 0.95, metalness: 0, envMapIntensity: 0.25 });
 for (let i = 0; i < 12; i++) {
   const p = clearSpot(10, 55, 0.8);
   const rr = rand(0.3, 0.85);
-  const r = new THREE.Mesh(new THREE.SphereGeometry(rr, 6, 5), mat(0x686760));
+  const r = new THREE.Mesh(new THREE.SphereGeometry(rr, 9, 7), rockStdMat);
   r.scale.y = 0.55;
   r.position.set(p.x, 0.1, p.z);
   r.rotation.y = rand(0, 9);
@@ -1416,9 +1528,22 @@ for (let i = 0; i < 12; i++) {
 })();
 // instanced grass tufts across the yard
 (function grass() {
-  const geo = new THREE.PlaneGeometry(0.16, 0.28);
-  geo.translate(0, 0.14, 0);
-  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), FINE ? 2400 : 1500);
+  const bladeTex = canvasTex(64, 64, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    for (let i = 0; i < 9; i++) { // a little sheaf of blades
+      const x0 = 12 + i * 5 + rand(-2, 2), lean = rand(-10, 10);
+      c.strokeStyle = ['#5b7a3c', '#4d6a33', '#66823f', '#42602c'][i % 4];
+      c.lineWidth = rand(1.6, 2.6); c.globalAlpha = rand(0.8, 1);
+      c.beginPath(); c.moveTo(x0, h);
+      c.quadraticCurveTo(x0 + lean * 0.4, h * 0.5, x0 + lean, rand(2, 16));
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  });
+  bladeTex.repeat.set(1, 1);
+  const geo = new THREE.PlaneGeometry(0.24, 0.32);
+  geo.translate(0, 0.16, 0);
+  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map: bladeTex, color: 0xffffff, alphaTest: 0.3, side: THREE.DoubleSide }), FINE ? 2400 : 1500);
   grassRef.inst = inst;
   const dummy = new THREE.Object3D(), col = new THREE.Color();
   const greens = [0x4d6a33, 0x5b7a3c, 0x42602c, 0x66823f];
@@ -4906,6 +5031,7 @@ function frame(now) {
   updateTraffic(dt);
   for (const f of fans) f.rotation.y += dt * 5;
   if (hearth) hearth.intensity = 0.65 + Math.sin(now * 0.021) * 0.2 + Math.sin(now * 0.047) * 0.12;
+  if (gradePass) gradePass.uniforms.uTime.value = now * 0.00021 % 100.0;
   // the San Lorenzo actually flows (texture drift + a light cross-ripple)
   waterTex.offset.x -= dt * 0.05;
   waterTex.offset.y = Math.sin(now * 0.0005) * 0.03;
