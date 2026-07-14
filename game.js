@@ -996,15 +996,31 @@ for (const sx of [-5.4, 0, 5.4]) {
   gg.material = gm;
   nightBulbMats.push({ m: gm, base: 0xcc8a30 });
 }
-// Middle connector with the deck bridge (now spanning house → garage north-south)
-box(6.5, 4, 3.4, WALL, -4, 2, -14.5).material = sidingMat;
-box(7, 0.3, 4.6, 0x6b4a30, -4, 4.15, -14.5).material = plankMat;
-for (let i = -3; i <= 3; i++) { box(0.12, 0.9, 0.12, TRIM, -4 + i, 4.75, -16.7); box(0.12, 0.9, 0.12, TRIM, -4 + i, 4.75, -12.3); }
-box(6.6, 0.1, 0.1, TRIM, -4, 5.2, -16.7); box(6.6, 0.1, 0.1, TRIM, -4, 5.2, -12.3);
-// house colliders
+// The breezeway: open passage at ground level, enclosed bridge on the SECOND floor
+// (like the real house — it's how the game room over the garage connects).
+(function breezeway() {
+  const bridge = box(6.5, 2.55, 3.4, WALL, -4, 4.2, -14.5);
+  bridge.material = sidingMat;
+  const soffit = box(6.5, 0.1, 3.5, 0x6b4a30, -4, 2.95, -14.5); // plank underside you walk beneath
+  soffit.material = plankMat;
+  const cap = box(7, 0.16, 4.1, ROOFC, -4, 5.55, -14.5); // low roof cap
+  cap.material = shingleMat;
+  // little window on the street side of the bridge
+  const bw = box(0.08, 0.85, 1.3, 0x243542, 0.52, 4.35, -14.5);
+  bw.material = glassMat;
+  box(0.1, 1.0, 1.45, TRIM, 0.5, 4.35, -14.5).position.x = 0.49;
+  // warm lights under the breezeway (on after dark)
+  for (const bz of [-15.6, -13.4]) {
+    const bm = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0x000000 });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), bm);
+    bulb.position.set(-4, 2.82, bz);
+    scene.add(bulb);
+    nightBulbMats.push({ m: bm, base: 0xcc8a30, window: true });
+  }
+})();
+// house colliders — the breezeway gap stays open so you can walk through to the backyard
 addBoxCollider(-8.7, 1, -28.2, -16);
 addBoxCollider(-8.7, 1, -13, -1);
-addBoxCollider(-8.2, 0.5, -16, -13);
 
 // White Mini in the driveway
 const car = (function miniCooper() {
