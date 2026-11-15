@@ -4,6 +4,32 @@ A 3D browser game starring the Fisch family at their house in the redwoods of
 Felton, California. One house in the forest. Six Fisches. Zero chance of peace
 and quiet.
 
+## 🎬 The look
+
+Rebuilt from the ground up for a cinematic picture that still runs on a phone:
+
+- **A real sky** — atmosphere gradient, sun disc and scatter, and drifting,
+  self-shadowed clouds, all in one shader. The sun rises over River Ln, arcs
+  across the south and sets behind the western ridge, so mornings light the
+  front of the house the way they really do.
+- **The Santa Cruz Mountains** — true displaced terrain ringing the valley,
+  cloaked in canopy and hundreds of redwood silhouettes, melting into haze.
+  Forest in every direction.
+- **A living forest floor** — deep redwood duff, moss and sorrel patches, a
+  proper lawn in the yard, leafy shrubs and maples, and wind that rolls
+  through every leaf, frond and blade (harder in the rain).
+- **Water that looks like water** — the San Lorenzo ripples, reflects the sky
+  and the far-bank treeline, glints in the sun and foams along its banks.
+- **Characters that move like people** — knees and elbows, a real walk and
+  run cycle, a forward lean at a sprint, tucked legs in a jump, and heads
+  that turn to look at whoever walks up.
+- **The Mini** — rounded bodywork, black roof, chrome, glass and spoked
+  wheels that reflect the world around them.
+- **A cinematic title** — the game opens on a slow crane shot around the
+  house in golden morning light, then sweeps down to whoever you pick.
+- **Smooth everywhere** — a frame-rate governor quietly trades render
+  resolution for speed, so any phone settles on a fluid picture.
+
 ## ✨ Act I — Felton After Dark
 
 - **Living day/night cycle** — the sun arcs and sets behind the ridge; real
@@ -121,8 +147,8 @@ cabin at 111 across the lane) and ends at the **San Lorenzo River**. The
 Santa Cruz Redwoods RV Resort sits east of the lane by the water, a
 walkable covered bridge crosses to the **Henry Cowell** trailhead on the
 far bank, the Roaring Camp steam train passes through the redwoods
-beyond, downtown Felton is up Hwy 9, and the Santa Cruz Mountains sit
-hazy on every horizon. Power lines sag along the lane, sword ferns crowd
+beyond, downtown Felton is up Hwy 9, and the forested Santa Cruz
+Mountains rise hazy on every horizon. Power lines sag along the lane, sword ferns crowd
 the forest floor, and sun shafts slant through the canopy.
 
 ## Make it photo-real (no coding needed)

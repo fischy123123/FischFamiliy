@@ -8,144 +8,191 @@
 <title>Fisch Family: Forest Chaos</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --glass: rgba(9, 15, 13, 0.56); --glass-strong: rgba(9, 15, 13, 0.78);
+    --line: rgba(255, 255, 255, 0.16); --gold: #ffd58a; --leaf: #9be3a4;
+    --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+  }
   html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; touch-action: none;
-    font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #0d1a12; }
+    font-family: var(--ui); background: #070b09; -webkit-font-smoothing: antialiased; }
   #game { display: block; width: 100%; height: 100%; }
   #vignette { display: none; }
+  button { font-family: inherit; }
 
-  /* HUD */
-  #hud { display: none; }
-  #mission {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px; z-index: 10;
-    background: rgba(12, 26, 18, 0.78); color: #fff; border: 2px solid #7ee08a55;
-    border-radius: 14px; padding: 10px 14px; max-width: min(320px, 62vw);
-    backdrop-filter: blur(4px);
+  /* HUD — quiet glass panels that stay out of the picture's way */
+  #hud { display: none; animation: hudin 0.9s ease both; }
+  @keyframes hudin { from { opacity: 0; } to { opacity: 1; } }
+  .glass, #mission, #score, #achv, #assetload, #toast, #actions button, #portraits button, #mute, #jumpbtn {
+    background: var(--glass); border: 1px solid var(--line); box-shadow: var(--shadow); color: #fff;
   }
-  #mtitle { font-size: 17px; font-weight: bold; color: #ffd166; }
-  #mdesc { font-size: 12px; opacity: 0.9; margin: 3px 0; line-height: 1.35; }
-  #mprog { font-size: 13px; font-weight: bold; color: #7ee08a; }
+  @media (pointer: fine) {
+    #mission, #score, #achv, #toast, #actions button, .card { backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
+  }
+  #mission {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: calc(env(safe-area-inset-left, 0px) + 10px); z-index: 10;
+    border-radius: 16px; padding: 11px 15px 12px; max-width: min(300px, 58vw);
+    border-left: 3px solid var(--gold);
+  }
+  #mtitle { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.2px; }
+  #mdesc { font-size: 12px; opacity: 0.86; margin: 4px 0 6px; line-height: 1.4; }
+  #mprog { font-size: 12px; font-weight: 700; color: var(--leaf); letter-spacing: 0.4px; text-transform: uppercase; }
   #score {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 50%; transform: translateX(-50%);
-    z-index: 10; background: rgba(12, 26, 18, 0.78); color: #ffd166; font-weight: bold; font-size: 16px;
-    padding: 6px 14px; border-radius: 20px; border: 2px solid #ffd16655;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 50%; transform: translateX(-50%);
+    z-index: 10; color: var(--gold); font-weight: 700; font-size: 15px;
+    padding: 6px 15px; border-radius: 999px; font-variant-numeric: tabular-nums;
   }
   #achv {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 50px); left: 50%; transform: translateX(-50%);
-    z-index: 10; background: rgba(12, 26, 18, 0.7); color: #ffd166; font-weight: bold; font-size: 12px;
-    padding: 4px 12px; border-radius: 14px; border: 1px solid #ffd16644;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 48px); left: 50%; transform: translateX(-50%);
+    z-index: 10; color: #ffffffd0; font-weight: 600; font-size: 11px; letter-spacing: 0.3px;
+    padding: 4px 11px; border-radius: 999px; box-shadow: none;
   }
   #assetload {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 74px); left: 50%; transform: translateX(-50%);
-    z-index: 10; background: rgba(12, 26, 18, 0.82); color: #9fd8ff; font-weight: bold; font-size: 12px;
-    padding: 5px 12px; border-radius: 14px; border: 1px solid #9fd8ff55; white-space: nowrap;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 76px); left: 50%; transform: translateX(-50%);
+    z-index: 10; color: #bfe4ff; font-weight: 600; font-size: 11px;
+    padding: 5px 12px; border-radius: 999px; white-space: nowrap;
   }
   #actions {
     display: none; position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
     left: 50%; transform: translateX(-50%); z-index: 12; gap: 8px;
   }
   #actions button {
-    background: rgba(12, 26, 18, 0.88); color: #fff; border: 2px solid #7ee08a99;
-    border-radius: 22px; padding: 11px 16px; font-weight: bold; font-size: 14px; cursor: pointer;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+    background: var(--glass-strong); border-radius: 999px; padding: 11px 17px; font-weight: 650; font-size: 14px; cursor: pointer;
+    transition: transform 0.12s, background 0.2s; white-space: nowrap;
   }
-  #actions button:active { transform: scale(0.94); background: rgba(47, 90, 58, 0.95); }
+  #actions button:active { transform: scale(0.94); background: rgba(60, 110, 74, 0.9); }
   #actions .hk {
-    opacity: 0.65; border: 1px solid #ffffff88; border-radius: 4px; padding: 0 5px; font-size: 11px; margin-left: 4px;
+    opacity: 0.6; border: 1px solid #ffffff66; border-radius: 5px; padding: 0 5px; font-size: 10.5px; margin-left: 5px;
   }
   #portraits {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; z-index: 10;
-    display: flex; flex-direction: column; gap: 6px;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); right: calc(env(safe-area-inset-right, 0px) + 10px); z-index: 10;
+    display: flex; flex-direction: column; gap: 7px;
   }
   #portraits button {
-    width: 44px; height: 44px; border-radius: 50%; border: 2px solid #fff;
-    background: rgba(12, 26, 18, 0.8); font-size: 20px; font-weight: bold; cursor: pointer;
-    transition: transform 0.1s;
+    width: 42px; height: 42px; border-radius: 50%; border-width: 2px; border-style: solid;
+    font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
   }
-  #portraits button.active { background: #2f5a3a; transform: scale(1.15); box-shadow: 0 0 12px #7ee08a; }
+  #portraits button.active { background: rgba(255, 255, 255, 0.16); transform: scale(1.14); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 0 18px rgba(155, 227, 164, 0.55); }
   #mute {
-    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); left: 8px; z-index: 10;
-    width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(12,26,18,0.7);
-    font-size: 18px; cursor: pointer;
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); left: calc(env(safe-area-inset-left, 0px) + 10px); z-index: 10;
+    width: 40px; height: 40px; border-radius: 50%; font-size: 17px; cursor: pointer;
   }
   #help {
-    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); left: 56px; z-index: 10;
-    color: #ffffff99; font-size: 11px;
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); left: 60px; z-index: 10;
+    color: #ffffffa0; font-size: 11px; text-shadow: 0 1px 3px #000a;
   }
   @media (pointer: coarse) { #help { display: none; } }
+  @media (max-width: 560px) { /* upright phones: stack the score under the round buttons so nothing overlaps */
+    #mission { max-width: calc(100vw - 212px); }
+    #score { left: auto; transform: none; right: calc(env(safe-area-inset-right, 0px) + 62px); top: calc(env(safe-area-inset-top, 0px) + 58px); }
+    #achv { left: auto; transform: none; right: calc(env(safe-area-inset-right, 0px) + 62px); top: calc(env(safe-area-inset-top, 0px) + 94px); }
+    #assetload { top: calc(env(safe-area-inset-top, 0px) + 126px); }
+  }
 
   /* touch controls */
   #joy {
     display: none; position: fixed; width: 120px; height: 120px; z-index: 9;
-    border: 2px solid rgba(255,255,255,0.35); border-radius: 50%;
-    background: rgba(255,255,255,0.06); pointer-events: none;
+    border: 1.5px solid rgba(255,255,255,0.32); border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.1) 100%); pointer-events: none;
   }
   #joyknob {
     position: absolute; left: 34px; top: 34px; width: 48px; height: 48px; border-radius: 50%;
-    background: rgba(255,255,255,0.45);
+    background: rgba(255,255,255,0.5); box-shadow: 0 2px 10px rgba(0,0,0,0.35);
   }
   #jumpbtn {
-    display: none; position: fixed; right: 18px; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-    width: 76px; height: 76px; border-radius: 50%; z-index: 10;
-    border: 3px solid rgba(255,255,255,0.5); background: rgba(126, 224, 138, 0.35);
-    color: #fff; font-size: 14px; font-weight: bold;
+    display: none; position: fixed; right: calc(env(safe-area-inset-right, 0px) + 18px); bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+    width: 74px; height: 74px; border-radius: 50%; z-index: 10;
+    border: 1.5px solid rgba(255,255,255,0.45); background: rgba(155, 227, 164, 0.22);
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
   }
+  #jumpbtn:active { background: rgba(155, 227, 164, 0.45); transform: scale(0.95); }
   @media (pointer: coarse) { #jumpbtn { display: block; } }
 
   /* speech bubbles */
   #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 8; }
   .bubble {
     position: absolute; transform: translate(-50%, -100%);
-    background: #fffef8; color: #1a1a1a; font-size: 15px; font-weight: 700;
+    background: rgba(255, 254, 249, 0.97); color: #17191a; font-size: 15px; font-weight: 650;
     line-height: 1.35; letter-spacing: 0.1px;
-    padding: 9px 13px; border-radius: 14px; border: 2px solid #22222240;
-    max-width: 250px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    padding: 9px 14px; border-radius: 16px;
+    max-width: 250px; text-align: center; box-shadow: 0 6px 22px rgba(0,0,0,0.38);
   }
   .bubble::after {
-    content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
-    border: 5px solid transparent; border-top-color: #fffef5;
+    content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: rgba(255, 254, 249, 0.97);
   }
 
   /* toast */
   #toast {
     position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 110px); left: 50%;
-    transform: translate(-50%, 20px); z-index: 11; opacity: 0; transition: all 0.3s;
-    background: rgba(20, 40, 26, 0.92); color: #fff; font-size: 15px; font-weight: bold;
-    padding: 12px 20px; border-radius: 14px; border: 2px solid #ffd16688;
+    transform: translate(-50%, 16px); z-index: 11; opacity: 0; transition: opacity 0.3s, transform 0.3s;
+    background: var(--glass-strong); font-size: 14.5px; font-weight: 600;
+    padding: 12px 20px; border-radius: 16px; border-color: rgba(255, 213, 138, 0.4);
     max-width: 86vw; text-align: center; pointer-events: none;
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  body.title .hudx { display: none !important; }
 
-  /* intro */
+  /* title screen — the live world plays behind it */
   #intro {
-    position: fixed; inset: 0; z-index: 20; overflow-y: auto;
-    background: linear-gradient(180deg, #10281a 0%, #1d3a26 60%, #2a4a30 100%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 24px 16px; text-align: center; touch-action: pan-y;
+    position: fixed; inset: 0; z-index: 20; overflow-y: auto; touch-action: pan-y;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top, 0px) + 4vh) 16px calc(env(safe-area-inset-bottom, 0px) + 3vh); text-align: center;
+    background:
+      linear-gradient(180deg, rgba(5, 9, 8, 0.66) 0%, rgba(5, 9, 8, 0.12) 30%, rgba(5, 9, 8, 0) 46%, rgba(5, 9, 8, 0.42) 66%, rgba(5, 9, 8, 0.88) 100%);
+    transition: opacity 0.9s ease;
   }
-  #intro h1 { color: #ffd166; font-size: clamp(26px, 6vw, 44px); text-shadow: 0 3px 0 #00000055; }
-  #intro h2 { color: #7ee08a; font-size: clamp(13px, 3.4vw, 18px); margin: 6px 0 4px; font-weight: 600; }
-  #intro p { color: #ffffffbb; font-size: 13px; margin-bottom: 16px; }
-  #cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; width: 100%; max-width: 560px; }
+  #intro.out { opacity: 0; pointer-events: none; }
+  #intro .kicker { color: #ffffffc8; font-size: clamp(10px, 1.5vw, 13px); letter-spacing: 0.42em; text-transform: uppercase; font-weight: 600; text-shadow: 0 1px 8px #000c; }
+  #intro h1 {
+    font-family: var(--display); color: #fff; font-weight: 600; font-size: clamp(34px, 8.4vw, 86px); line-height: 1; margin-top: 0.14em;
+    letter-spacing: -0.01em; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+  #intro h2 {
+    color: var(--gold); font-size: clamp(12px, 2.5vw, 22px); letter-spacing: 0.56em; text-indent: 0.56em; text-transform: uppercase; font-weight: 600; margin-top: 0.55em;
+    text-shadow: 0 1px 12px #000c;
+  }
+  #intro .lower { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  #intro p { color: #ffffffd8; font-size: clamp(12px, 1.6vw, 15px); margin-bottom: 12px; text-shadow: 0 1px 8px #000c; }
+  #cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; width: 100%; max-width: 760px; }
+  @media (max-width: 560px) { #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .card {
-    background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
-    border-radius: 14px; padding: 12px 10px; cursor: pointer; transition: transform 0.1s, background 0.2s;
+    display: flex; align-items: center; gap: 11px; text-align: left; color: #fff;
+    background: rgba(9, 15, 13, 0.6); border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 16px; padding: 10px 12px; cursor: pointer; transition: transform 0.14s, background 0.2s, border-color 0.2s;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
   }
-  .card:active { transform: scale(0.96); background: rgba(255,255,255,0.18); }
-  .cname { font-size: 19px; font-weight: bold; }
-  .ctag { font-size: 11.5px; color: #ffffffcc; margin-top: 4px; line-height: 1.35; }
-  #intro .hint { margin-top: 16px; color: #ffd166; font-size: 14px; font-weight: bold; }
+  .card:hover { background: rgba(30, 44, 38, 0.72); border-color: rgba(255, 255, 255, 0.4); transform: translateY(-2px); }
+  .card:active { transform: scale(0.97); }
+  .cav { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #0b100e; }
+  .cname { font-size: 16px; font-weight: 700; }
+  .ctag { font-size: 11px; color: #ffffffb8; margin-top: 2px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #intro .hint { margin-top: 10px; color: #ffffff9c; font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase; font-weight: 600; }
+  @media (max-height: 460px) {
+    #intro { padding-top: 10px; padding-bottom: 8px; }
+    #intro h1 { font-size: clamp(28px, 11vh, 52px); }
+    #intro h2 { font-size: 11px; margin-top: 0.4em; }
+    #intro p, #intro .hint { display: none; }
+    .card { padding: 7px 10px; } .cav { width: 32px; height: 32px; font-size: 14px; } .ctag { -webkit-line-clamp: 1; }
+  }
 </style>
 </head>
-<body>
+<body class="title">
 <canvas id="game"></canvas>
 <div id="vignette"></div>
 
 <div id="intro">
-  <h1>🌲 Fisch Family: Forest Chaos 🌲</h1>
-  <h2>Live from the redwoods of Felton, California</h2>
-  <p>One house in the forest. Six Fisches. Zero chance of peace and quiet.</p>
-  <div id="cards"></div>
-  <div class="hint">👆 Tap your Fisch to start!</div>
+  <div class="upper">
+    <div class="kicker">110 River Lane · Felton, California</div>
+    <h1>Fisch Family</h1>
+    <h2>Forest Chaos</h2>
+  </div>
+  <div class="lower">
+    <p>One house in the redwoods. Six Fisches. Zero chance of peace and quiet.</p>
+    <div id="cards"></div>
+    <div class="hint">Choose your Fisch</div>
+  </div>
 </div>
 
 <div id="hud">
